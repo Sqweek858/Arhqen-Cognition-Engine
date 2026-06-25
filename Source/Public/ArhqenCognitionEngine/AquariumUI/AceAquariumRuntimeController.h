@@ -43,6 +43,7 @@ namespace ace::aquarium_ui
         const std::string& CurrentScenarioName() const { return scenarioName_; }
         const std::string& CurrentPlannerName() const { return plannerName_; }
         int StepIndex() const { return stepIndex_; }
+        const ace::aquarium::AceAqEnvironment& Environment() const { return environment_; }
 
     private:
         ace::aquarium::AceAqAction ChoosePlannerAction();

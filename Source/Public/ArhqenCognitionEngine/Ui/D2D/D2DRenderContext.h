@@ -58,5 +58,8 @@ namespace am::ui
         D2DTextFormats fonts;
         float width = 0.0f;
         float height = 0.0f;
+        float dpiScale = 1.0f;
+        UINT dpiX = 96;
+        UINT dpiY = 96;
     };
 }

@@ -1,6 +1,7 @@
 #include "ArhqenCognitionEngine/Ui/D2D/D2DGlassEffects.h"
 
 #include "ArhqenCognitionEngine/Ui/D2D/D2DCyberEffects.h"
+#include "ArhqenCognitionEngine/Ui/D2D/D2DCachedEffects.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DWidgetUtils.h"
 
 #include <algorithm>
@@ -139,19 +140,10 @@ namespace am::ui
             return;
         }
 
-        // This is not true Gaussian blur. It is a cheap frosted-light fallback for the current HwndRenderTarget renderer.
-        // M26D wires the real blur policy separately so the renderer can later switch to DeviceContext effects.
-        for (int i = 5; i >= 1; --i)
-        {
-            const float spread = static_cast<float>(i) * 3.5f;
-            UiRect layer = makeUiRect(rect.left - spread, rect.top - spread * 0.45f, rect.right + spread, rect.bottom + spread * 0.75f);
-            ID2D1SolidColorBrush* brush = (i % 2 == 0) ? ctx.brushes.accent : ctx.brushes.accentBlue;
-            setOpacity(brush, alpha * (0.035f + 0.018f * static_cast<float>(6 - i)));
-            ctx.target->FillRoundedRectangle(D2DWidgetUtils::rounded(layer, radius + spread), brush);
-        }
-
-        restoreOpacity(ctx.brushes.accent);
-        restoreOpacity(ctx.brushes.accentBlue);
+        // ACE-UI4: keep the current HwndRenderTarget-compatible frosted fallback,
+        // but cache the quantized layer geometry so repeated acrylic panels do not
+        // rebuild the same multi-layer blur approximation every frame.
+        D2DCachedEffects::drawCachedBlurFallback(ctx, rect, radius, alpha);
     }
 
     void D2DGlassEffects::drawDepthSeparator(D2DRenderContext& ctx, UiRect rect, float alpha)

@@ -19,6 +19,10 @@ namespace am::renderer
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 reinterpret_cast<DPI_AWARENESS_CONTEXT>(-4)
+#endif
+
         void enableDarkTitleBar(HWND hwnd)
         {
             if (!hwnd)
@@ -28,6 +32,28 @@ namespace am::renderer
 
             BOOL darkMode = TRUE;
             DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+        }
+
+        void enablePerMonitorDpiAwareness()
+        {
+            // ACE-UI3: keep the custom D2D shell in per-monitor DPI mode when
+            // Windows supports it. This mirrors the Slate-style assumption that
+            // geometry is expressed in logical UI units while native windows track
+            // monitor DPI changes explicitly.
+            const HMODULE user32 = GetModuleHandleW(L"user32.dll");
+            if (!user32)
+            {
+                return;
+            }
+
+            using SetProcessDpiAwarenessContextFn = BOOL (WINAPI*)(DPI_AWARENESS_CONTEXT);
+            const auto setContext = reinterpret_cast<SetProcessDpiAwarenessContextFn>(
+                GetProcAddress(user32, "SetProcessDpiAwarenessContext")
+            );
+            if (setContext)
+            {
+                setContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            }
         }
     }
 
@@ -47,6 +73,8 @@ namespace am::renderer
 
     bool NativeWindow::create(const std::wstring& title, int width, int height, std::string* error)
     {
+        enablePerMonitorDpiAwareness();
+
         instance_ = GetModuleHandleW(nullptr);
         className_ = kWindowClassName;
         width_ = width;
@@ -57,13 +85,13 @@ namespace am::renderer
 
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(WNDCLASSEXW);
-        wc.style = CS_HREDRAW | CS_VREDRAW;
+        wc.style = 0; // ACE-AQ3D7: no class-level full-window resize invalidation.
         wc.lpfnWndProc = &NativeWindow::windowProc;
         wc.hInstance = instance_;
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wc.hIcon = appIcon ? appIcon : LoadIconW(nullptr, IDI_APPLICATION);
         wc.hIconSm = smallIcon ? smallIcon : wc.hIcon;
-        wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        wc.hbrBackground = nullptr; // ACE-AQ3D7: custom D2D/DX12 UI owns background erase.
         wc.lpszClassName = className_.c_str();
 
         if (!RegisterClassExW(&wc))
@@ -88,7 +116,10 @@ namespace am::renderer
             0,
             className_.c_str(),
             title.c_str(),
-            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+            // ACE-AQ3D10: do not use WS_CLIPCHILDREN on the top-level D2D shell.
+            // During live resize the DX12 child viewport is hidden/off-screen and
+            // the parent must be able to paint a D2D proxy into the same area.
+            WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             rect.right - rect.left,
@@ -212,6 +243,15 @@ namespace am::renderer
 
     LRESULT NativeWindow::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     {
+        // ACE-AQ3D8: update cached window size before the UI message handler so
+        // WM_SIZE can be handled transactionally without also firing the legacy
+        // resizeHandler/layout path. This prevents duplicate live-resize churn.
+        if (message == WM_SIZE && wParam != SIZE_MINIMIZED)
+        {
+            width_ = LOWORD(lParam);
+            height_ = HIWORD(lParam);
+        }
+
         if (messageHandler_)
         {
             bool handled = false;
@@ -242,12 +282,13 @@ namespace am::renderer
             }
             return DefWindowProcW(hwnd_, message, wParam, lParam);
 
+        case WM_ERASEBKGND:
+            // ACE-AQ3D7: prevent classic Windows background erase flicker before D2D/DX12 paints.
+            return 1;
+
         case WM_SIZE:
             if (wParam != SIZE_MINIMIZED)
             {
-                width_ = LOWORD(lParam);
-                height_ = HIWORD(lParam);
-
                 if (resizeHandler_)
                 {
                     resizeHandler_(width_, height_);

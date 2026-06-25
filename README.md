@@ -190,3 +190,69 @@ Fixed missing `Source\Resources\ArhqenCognitionEngine.ico` referenced by `Arhqen
 - bigger, lighter vignette with smoother falloff
 - aquarium control buttons now react on hover
 - Environment / Settings tabs add a more visible backdrop blur veil when open
+
+## ACE-AQ3D0 Minimal Aquarium Viewport
+
+ACE-AQ3D0 adds the first visual Aquarium viewport synchronized with the headless C++ runtime. The current path is a D2D/isometric fallback inside the Environment panel, with grid, agent, direction arrow, front-cell highlight, object primitives, and Debug Truth separation.
+
+## ACE-AQ3D0R Real DX12 Environment Entry
+
+ACE-AQ3D0R adds a real DX12 3D Environment entry from the Aquarium Control Panel. The previous D2D/isometric AQ3D0 card is no longer the default 3D path; the Control Panel now opens a separate DX12 viewport window synchronized with the existing C++ Aquarium runtime.
+
+## ACE-AQ3D1 Embedded DX12 Environment Viewport
+
+ACE-AQ3D1 embeds the DX12 Aquarium viewport directly inside the main Environment panel. The AQ3D0R separate-window path is no longer the main path; `Open 3D Environment` now shows/focuses an embedded DX12 child surface synchronized with the existing Aquarium C++ runtime.
+
+## ACE-AQ3D2 Full Environment Workspace
+
+ACE-AQ3D2 upgrades the Aquarium view into a full Environment Workspace with a stable embedded DX12 viewport. The viewport is large, embedded in the main shell, and guarded against per-frame resize/reinitialization flicker.
+
+## ACE-AQ3D3 Full-Screen 3D Environment Mode
+
+ACE-AQ3D3 adds a full-screen 3D Environment Mode launched from the Environment Control Panel.
+The flow is `Environment -> Enter 3D Environment -> Back / Exit 3D`, using the same main window and the embedded DX12 viewport as the dominant surface.
+
+## ACE-AQ3D4 3D Environment UI Layout Rework
+
+ACE-AQ3D4 reworks the 3D Environment UI layout with a thin topbar, resizable details/log panels, and a cleaner Environment Control Panel.
+
+## ACE-AQ3D5 Layout Determinism + Flicker Fix + Panel Clipping
+
+ACE-AQ3D5 stabilizes the 3D Environment UI layout, clipping, panel resizing, logs scrolling, and viewport flicker behavior.
+
+ACE-AQ3D7 fixes flicker by using dirty rect invalidation, stable child HWND sync outside paint, and queued DX12 viewport resize handling.
+
+ACE-AQ3D8 stabilizes live window resize by deferring embedded DX12 child HWND sync and renderer resize/recreate until the final resize transaction completes.
+
+ACE-AQ3D9 hides the child DX12 viewport during live resize and paints a stable D2D proxy until the final resize sync restores the viewport.
+
+## ACE-AQ3D12 Owned Popup Resize Shield
+
+ACE-AQ3D12 covers the live-resize viewport region with a no-activate owned popup shield while the embedded DX12 child HWND is hidden, then restores DX12 after the final resize.
+## ACE-AQ3D13 Frozen Native Resize Commit
+
+ACE-AQ3D13 freezes native border live-resize in 3D Environment mode and commits the final window RECT once on release, avoiding repeated child DX12 swapchain/D2D resize churn during the modal drag.
+
+
+## ACE-AQ3D14 Slate-style Offscreen Viewport Composite
+
+ACE-AQ3D14 moves the 3D Environment main path away from the legacy child-HWND DX12 viewport and into a single-HWND, Slate-style composited viewport path. This avoids the D2D parent plus child DX12 swapchain live-resize flicker path.
+
+## ACE-UI3 DPI / Multi-Monitor Geometry Pass
+
+ACE-UI3 adds a Slate-inspired display metrics layer for per-monitor DPI, monitor work-area clamping, client/screen rect conversion, and `WM_DPICHANGED` / `WM_DISPLAYCHANGE` handling.
+
+## ACE-UI4 Cached Blur / Acrylic Effects Pass
+
+ACE-UI4 adds cached frosted/acrylic fallback effect geometry, exposes effect-cache diagnostics through `cache_stats`, and keeps the current D2D renderer visually richer without importing Slate or adding a new renderer dependency.
+
+## ACE-UI3F D2D Pixel-Space DPI Correction
+
+ACE-UI3F pins the D2D HwndRenderTarget to explicit 96-DPI pixel-space so the existing Arhqen layout does not get auto-scaled on high-DPI monitors.
+## ACE-UI3G Logical UI Scale + Viewport Fit Polish
+
+ACE-UI3G keeps the D2D pixel-space DPI fix while making the 3D Environment UI more readable through controlled logical scaling, slightly larger text, wider panels, and a better viewport scene fit.
+
+## ACE-UI5..UI11 + ACE-AQUI1 UI Foundation Pass
+
+ACE-UI5 adds text clipping/ellipsis helpers, ACE-UI6 adds a retained layout tree, ACE-UI7 adds a draw command buffer, ACE-UI8 adds invalidation dirty regions, ACE-UI9 adds a UI debug overlay, ACE-AQUI1 adds Aquarium telemetry widgets, and ACE-UI11 adds the first named style-set layer.

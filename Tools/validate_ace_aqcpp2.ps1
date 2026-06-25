@@ -3,6 +3,9 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $BuildDir = Join-Path $Root "Build\ACE-AQCPP2"
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
+$ObjDir = Join-Path $BuildDir "obj"
+New-Item -ItemType Directory -Force -Path $ObjDir | Out-Null
+$FoArg = "/Fo$ObjDir\\"
 
 $Probe = Join-Path $Root "Tools\AceAqCpp2Probe.cpp"
 if (-not (Test-Path $Probe)) {
@@ -27,7 +30,7 @@ $Exe = Join-Path $BuildDir "AceAqCpp2Probe.exe"
 $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
     Write-Host "INFO|compiler|cl.exe"
-    & $cl.Source /std:c++20 /EHsc /W4 /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $CoreFiles
+    & $cl.Source /std:c++20 /EHsc /W4 $FoArg /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $CoreFiles
     if ($LASTEXITCODE -ne 0) {
         throw "cl.exe failed with exit code $LASTEXITCODE"
     }

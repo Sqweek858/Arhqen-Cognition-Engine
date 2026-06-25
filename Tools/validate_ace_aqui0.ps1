@@ -3,6 +3,9 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $BuildDir = Join-Path $Root "Build\ACE-AQUI0"
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
+$ObjDir = Join-Path $BuildDir "obj"
+New-Item -ItemType Directory -Force -Path $ObjDir | Out-Null
+$FoArg = "/Fo$ObjDir\\"
 
 $Required = @(
     "Source\Public\ArhqenCognitionEngine\AquariumUI\AceAquariumRuntimeController.h",
@@ -79,7 +82,7 @@ function Invoke-Probe($ProbeName, $ExeName, [bool]$WithUi) {
     $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
     if ($cl) {
         Write-Host "INFO|compiler|cl.exe"
-        & $cl.Source /std:c++20 /EHsc /W4 /I (Join-Path $Root "Source\Public") /Fe:$Exe (Join-Path $Root "Tools\$ProbeName") $Files
+        & $cl.Source /std:c++20 /EHsc /W4 $FoArg /I (Join-Path $Root "Source\Public") /Fe:$Exe (Join-Path $Root "Tools\$ProbeName") $Files
         if ($LASTEXITCODE -ne 0) { throw "cl.exe failed for $ProbeName with exit code $LASTEXITCODE" }
     } else {
         $gpp = Get-Command g++.exe -ErrorAction SilentlyContinue

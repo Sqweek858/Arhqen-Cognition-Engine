@@ -2,6 +2,7 @@
 
 #include "ArhqenCognitionEngine/Ui/D2D/D2DRenderContext.h"
 
+#include <cstdint>
 #include <string>
 
 namespace am::ui
@@ -10,6 +11,7 @@ namespace am::ui
     {
         Disabled,
         FallbackGlass,
+        CachedFrostedFallback,
         RealDeviceContext
     };
 
@@ -18,7 +20,10 @@ namespace am::ui
         D2DBlurMode activeMode = D2DBlurMode::FallbackGlass;
         bool realBlurAvailable = false;
         bool fallbackAvailable = true;
+        bool cachedFallbackAvailable = true;
         float requestedRadius = 18.0f;
+        std::uint64_t effectCacheHits = 0;
+        std::uint64_t effectCacheMisses = 0;
         std::string reason;
     };
 

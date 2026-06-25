@@ -1,4 +1,5 @@
 #include "ArhqenCognitionEngine/Ui/D2D/D2DBlurRuntime.h"
+#include "ArhqenCognitionEngine/Ui/D2D/D2DCachedEffects.h"
 
 namespace am::ui
 {
@@ -19,10 +20,14 @@ namespace am::ui
         // Current renderer path uses ID2D1HwndRenderTarget. Real Gaussian blur through D2D effects needs
         // an ID2D1DeviceContext + offscreen bitmap/effect chain or a DirectComposition-backed blur path.
         // M26D records the policy and keeps fallback active until the renderer backend is upgraded.
-        status.activeMode = D2DBlurMode::FallbackGlass;
+        const auto cacheStats = D2DCachedEffects::stats();
+        status.activeMode = D2DBlurMode::CachedFrostedFallback;
         status.realBlurAvailable = false;
         status.fallbackAvailable = true;
-        status.reason = "Fallback glass blur active. Real blur requires ID2D1DeviceContext/effect-chain renderer upgrade.";
+        status.cachedFallbackAvailable = true;
+        status.effectCacheHits = cacheStats.hitCount;
+        status.effectCacheMisses = cacheStats.missCount;
+        status.reason = "Cached frosted fallback active. Real blur still needs an ID2D1DeviceContext/effect-chain renderer upgrade.";
         return status;
     }
 
@@ -34,6 +39,8 @@ namespace am::ui
             return "disabled";
         case D2DBlurMode::FallbackGlass:
             return "fallback_glass";
+        case D2DBlurMode::CachedFrostedFallback:
+            return "cached_frosted_fallback";
         case D2DBlurMode::RealDeviceContext:
             return "real_device_context";
         default:

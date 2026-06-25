@@ -36,6 +36,13 @@ add_executable(ArhqenCognitionEngine
     Source/Private/AquariumUI/AceAquariumPanel.cpp
     Source/Private/AquariumUI/AceAquariumRuntimeController.cpp
     Source/Private/AquariumUI/AceAquariumUiSnapshot.cpp
+    Source/Private/AquariumUI/AceEnvironmentWorkspace.cpp
+    Source/Private/AquariumUI/AceEnvironment3DMode.cpp
+    Source/Private/AquariumRender/AceAquariumViewport.cpp
+    Source/Private/AquariumRender/AceAquariumSceneAdapter.cpp
+    Source/Private/AquariumRender/AceAquariumRenderPrimitive.cpp
+    Source/Private/AquariumRender/AceAquariumCamera.cpp
+    Source/Private/AquariumRender/AceAquariumEmbeddedDx12Viewport.cpp
     Source/Private/Core/AppConfig.cpp
     Source/Private/Core/Application.cpp
     Source/Private/Core/Logger.cpp
@@ -47,8 +54,12 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Renderer/UiDrawList.cpp
     Source/Private/Ui/AceShellUi.cpp
     Source/Private/Ui/Core/UiAnimation.cpp
+    Source/Private/Ui/Core/AceUiInvalidationRoot.cpp
+    Source/Private/Ui/Core/AceUiRetainedLayout.cpp
+    Source/Private/Ui/Core/AceUiStyleSet.cpp
     Source/Private/Ui/D2D/D2DAutocompletePopup.cpp
     Source/Private/Ui/D2D/D2DBlurRuntime.cpp
+    Source/Private/Ui/D2D/D2DCachedEffects.cpp
     Source/Private/Ui/D2D/D2DButton.cpp
     Source/Private/Ui/D2D/D2DClipboard.cpp
     Source/Private/Ui/D2D/D2DCommandHistory.cpp
@@ -57,6 +68,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Ui/D2D/D2DCyberEffects.cpp
     Source/Private/Ui/D2D/D2DCyberText.cpp
     Source/Private/Ui/D2D/D2DDiagnosticsOverlay.cpp
+    Source/Private/Ui/D2D/D2DDisplayMetrics.cpp
     Source/Private/Ui/D2D/D2DFocusManager.cpp
     Source/Private/Ui/D2D/D2DGlassEffects.cpp
     Source/Private/Ui/D2D/D2DGraphCanvas.cpp
@@ -85,6 +97,10 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Ui/D2D/D2DToastCenter.cpp
     Source/Private/Ui/D2D/D2DToolbar.cpp
     Source/Private/Ui/D2D/D2DWidgetUtils.cpp
+    Source/Private/Ui/D2D/D2DTextLayoutFoundation.cpp
+    Source/Private/Ui/D2D/D2DDrawCommandBuffer.cpp
+    Source/Private/Ui/D2D/D2DUiDebugOverlay.cpp
+    Source/Private/Ui/D2D/D2DAquariumTelemetryWidgets.cpp
     Source/Private/Ui/D2D/D2DWorkspaceLayout.cpp
     Source/Private/Ui/D2D/D2DWorkspacePanel.cpp
     Source/Private/Ui/D2D/DWriteFontEngine.cpp
