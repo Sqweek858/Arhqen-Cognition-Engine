@@ -198,8 +198,10 @@
     <ClCompile Include="Private\Ui\D2D\DWriteFontEngine.cpp" />
     <ClCompile Include="Private\Ui\D2D\DWriteTextCache.cpp" />
   </ItemGroup>
-  <ItemGroup><ResourceCompile Include="ArhqenCognitionEngine.rc" /></ItemGroup>
-    <Image Include="Resources\ArhqenCognitionEngine.ico" /></ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="ArhqenCognitionEngine.rc" />
+    <Image Include="Resources\ArhqenCognitionEngine.ico" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>
