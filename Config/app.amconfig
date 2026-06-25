@@ -1,0 +1,53 @@
+# ArhqenCognitionEngine app config
+app.name=Arhqen Cognition Engine
+app.version=ace-clean0
+log.path=Build/Logs/ace.log
+
+# Runtime loop settings.
+# 0 = keep open until the user closes the window.
+runtime.max_frames=0
+
+# Direct2D/DirectWrite shell UI.
+window.title=Arhqen Cognition Engine
+window.width=1440
+window.height=860
+
+renderer.enabled=0
+ui.backend=direct2d_directwrite_ace_shell
+
+# legacy AI memory removed in ACE-CLEAN0
+ui.layout.path=Build/Ui/ace_clean0.layout
+
+# Visual depth settings
+ui.cyber.glass=true
+ui.cyber.blur.mode=fallback
+ui.cyber.blur.real=false
+ui.cyber.shadow.depth=medium
+ui.cyber.background.richness=high
+ui.cyber.background.layers=rich
+ui.cyber.background.dots=organic
+ui.cyber.background.art_direction=ace_cyber_field
+ui.cyber.background.fog=chaotic_layers
+ui.cyber.background.core=asymmetric
+ui.cyber.empty_state=enabled
+ui.cyber.background.core_intensity=huge
+ui.cyber.background.only_patch=true
+ui.cyber.empty_state.encoding=ascii_safe
+ui.cyber.background.composition=boosted_zones
+ui.cyber.background.outlines=reduced
+ui.cyber.background.motion=fast_short_pulses
+ui.cyber.background.filled_forms=high_contrast
+ui.cyber.background.outer_vignette=true
+ui.cyber.background.pulse_speed=tuned
+ui.window.icon=arhqen
+ui.window.titlebar=dark
+ui.empty_state.title_rect=expanded
+ui.window.icon.rc_path=escaped
+ui.cyber.background.edge_vignette_px=30
+ui.cyber.background.outer_vignette_strength=strong
+ui.cyber.background.vignette_scope=full_canvas
+ui.cyber.background.edge_vignette_px=52
+ui.cyber.background.outer_vignette_strength=extra_strong
+ui.cyber.background.tint=lighter_cyan
+ui.cyber.background.vignette_strength=balanced
+ui.cyber.background.final_visual_state=accepted

@@ -1,0 +1,3 @@
+#include "Public\ArhqenCognitionEngine\Resources\Resource.h"
+
+IDI_ARHQEN_APP ICON "Resources\\ArhqenCognitionEngine.ico"
