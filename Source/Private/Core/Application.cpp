@@ -222,7 +222,7 @@ namespace am::core
             return false;
         }
 
-        shellUi_.tick(timing.deltaSeconds);
+        shellUi_.tick(static_cast<float>(timing.deltaSeconds));
 
         if (rendererEnabled_)
         {

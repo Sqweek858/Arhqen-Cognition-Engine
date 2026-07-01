@@ -48,6 +48,7 @@ namespace ace::aquarium_render
             const ace::aquarium_ui::AceAquariumRuntimeController& controller,
             const AceAquariumSceneAdapter& sceneAdapter,
             bool debugTruthEnabled,
+            float deltaSeconds,
             std::string* error
         );
 
@@ -79,11 +80,13 @@ namespace ace::aquarium_render
         void RecreateRenderer();
         void QueueResize(int width, int height);
         void ApplyPendingResizeIfNeeded();
-        am::renderer::UiDrawList BuildDrawList(
+        am::renderer::Scene3DDrawList BuildScene3D(
             const ace::aquarium_ui::AceAquariumRuntimeController& controller,
             const AceAquariumSceneAdapter& sceneAdapter,
             bool debugTruthEnabled
         );
+        am::renderer::UiDrawList BuildOverlay(bool debugTruthEnabled);
+        void UpdateCameraInput(float deltaSeconds);
 
         HWND parent_ = nullptr;
         HWND hwnd_ = nullptr;
@@ -115,5 +118,9 @@ namespace ace::aquarium_render
         am::renderer::Dx12Renderer renderer_{};
         AceAquariumViewport viewport_{};
         AceAquariumCamera camera_{};
+        AceAquariumRealCamera realCamera_{};
+        bool mouseLookActive_ = false;
+        int lastMouseX_ = 0;
+        int lastMouseY_ = 0;
     };
 }

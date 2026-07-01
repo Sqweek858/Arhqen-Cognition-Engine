@@ -17,7 +17,7 @@ namespace am::ui
             return status;
         }
 
-        // Current renderer path uses ID2D1HwndRenderTarget. Real Gaussian blur through D2D effects needs
+        // Current renderer path uses an ID2D1DeviceContext target. Real Gaussian blur through D2D effects still needs
         // an ID2D1DeviceContext + offscreen bitmap/effect chain or a DirectComposition-backed blur path.
         // M26D records the policy and keeps fallback active until the renderer backend is upgraded.
         const auto cacheStats = D2DCachedEffects::stats();

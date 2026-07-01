@@ -1,33 +1,94 @@
-param(
-    [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot ".."))
-)
-
 $ErrorActionPreference = "Stop"
-$uiCpp = Join-Path $Root "Source\Private\Ui\AceShellUi.cpp"
-$uiH = Join-Path $Root "Source\Public\ArhqenCognitionEngine\Ui\AceShellUi.h"
-$doc = Join-Path $Root "Docs\ACE_AQ3D12.md"
 
-function Pass($name) { "PASS|$name" }
-function Fail($name, $why) { "FAIL|$name|$why"; $script:failed = $true }
-function Has($text, $needle) { return $text.Contains($needle) }
+$Root = Split-Path -Parent $PSScriptRoot
+$BuildDir = Join-Path $Root "Build\ACE-AQ3D12"
+New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
+$ObjDir = Join-Path $BuildDir "obj"
+New-Item -ItemType Directory -Force -Path $ObjDir | Out-Null
+$FoArg = "/Fo$ObjDir\"
 
-$script:failed = $false
-$ui = Get-Content $uiCpp -Raw
-$h = Get-Content $uiH -Raw
+$ShellHeader = Get-Content (Join-Path $Root "Source\Public\ArhqenCognitionEngine\Ui\AceShellUi.h") -Raw
+$ShellCpp = Get-Content (Join-Path $Root "Source\Private\Ui\AceShellUi.cpp") -Raw
+$CameraCpp = Get-Content (Join-Path $Root "Source\Private\AquariumRender\AceAquariumCamera.cpp") -Raw
 
-if (Has $h "aquariumResizeShieldHwnd_") { Pass "resize_popup_shield_state_exists" } else { Fail "resize_popup_shield_state_exists" "Missing resize shield HWND state" }
-if (Has $ui "ArhqenCognitionEngineAquariumResizeShieldPopup") { Pass "resize_popup_shield_window_class_exists" } else { Fail "resize_popup_shield_window_class_exists" "Missing resize shield popup class" }
-if (Has $ui "WS_POPUP" -and Has $ui "WS_EX_NOACTIVATE") { Pass "resize_popup_is_owned_noactivate_popup" } else { Fail "resize_popup_is_owned_noactivate_popup" "Shield is not a no-activate popup" }
-if (Has $ui "AquariumResizeShieldWindowProc" -and Has $ui "WM_PAINT" -and Has $ui "FillRect") { Pass "resize_popup_paints_own_stable_proxy" } else { Fail "resize_popup_paints_own_stable_proxy" "Shield does not paint its own proxy" }
-if (Has $ui "case WM_NCLBUTTONDOWN:" -and Has $ui "beginWindowLiveResize();") { Pass "resize_popup_arms_before_modal_loop" } else { Fail "resize_popup_arms_before_modal_loop" "WM_NCLBUTTONDOWN does not arm live resize" }
-if (Has $ui "updateAquariumResizeShieldWindow(aquariumEmbeddedViewportRect_)") { Pass "resize_popup_updates_during_live_resize" } else { Fail "resize_popup_updates_during_live_resize" "Shield is not updated during live resize" }
-if (Has $ui "ClientToScreen(parent_, &topLeft)") { Pass "resize_popup_uses_screen_coordinates" } else { Fail "resize_popup_uses_screen_coordinates" "Shield does not convert viewport rect to screen coordinates" }
-if (Has $ui "HideForLiveResize") { Pass "dx12_child_still_hidden_for_live_resize" } else { Fail "dx12_child_still_hidden_for_live_resize" "DX12 child is not hidden for live resize" }
-if (Has $ui "hideAquariumResizeShieldWindow();") { Pass "resize_popup_hides_after_dx12_restore" } else { Fail "resize_popup_hides_after_dx12_restore" "Shield hide after restore missing" }
-if (Has $h "resizeShieldPaintCount_") { Pass "resize_popup_counters_exist" } else { Fail "resize_popup_counters_exist" "Shield diagnostic counters missing" }
-if (Test-Path $doc) { Pass "docs_aq3d12_exists" } else { Fail "docs_aq3d12_exists" "Docs/ACE_AQ3D12.md missing" }
+if ($ShellHeader -notlike "*aquariumSingleHwndCamera_*" -or $ShellHeader -notlike "*bool aquariumUseSingleHwndCompositeViewport_ = true*") {
+    throw "AQ3D12 single-HWND camera/default path missing."
+}
+Write-Host "PASS|single_hwnd_3d_default_enabled"
 
-$probe = Join-Path $Root "Tools\AceAq3D12ResizePopupShieldProbe.cpp"
-if (Test-Path $probe) { Pass "aq3d12_probe_exists" } else { Fail "aq3d12_probe_exists" "Probe source missing" }
+if ($ShellCpp -notlike "*ACE-AQ3D12: main path is single-HWND composition*" -or $ShellCpp -notlike "*renderAquariumSlateCompositeViewport(ctx, rect, debugTruthEnabled)*") {
+    throw "AQ3D12 render surface does not route to single-HWND composition."
+}
+Write-Host "PASS|surface_routes_to_single_hwnd_composition"
 
-if ($failed) { exit 1 }
+if ($ShellCpp -notlike "*No child HWND, no separate flip-model swapchain*" -or $ShellCpp -notlike "*aquariumEmbeddedDx12Viewport_.Hide()*") {
+    throw "AQ3D12 does not suppress child HWND in main path."
+}
+Write-Host "PASS|child_hwnd_suppressed_in_main_path"
+
+if ($ShellCpp -notlike "*GetAsyncKeyState('W')*" -or $ShellCpp -notlike "*aquariumSingleHwndCamera_.UpdateFromInput*" -or $ShellCpp -notlike "*ApplyMouseDelta*") {
+    throw "AQ3D12 single-HWND camera input path missing."
+}
+Write-Host "PASS|single_hwnd_camera_input_present"
+
+
+if ($ShellCpp -notlike "*ACE-AQ3D12R1: bounded scene grid*" -or $ShellCpp -like "*for (int z = -2; z <= 16*") {
+    throw "AQ3D12R1 bounded scene grid missing or old fixed grid remains."
+}
+Write-Host "PASS|bounded_scene_grid_present"
+
+if ($ShellCpp -notlike "*ignore old adapter grid-line primitives*" -or $ShellCpp -notlike "*former isometric GridLine primitives*") {
+    throw "AQ3D12R1 must ignore old isometric grid-line primitives in the single-HWND compositor."
+}
+Write-Host "PASS|old_isometric_gridlines_ignored"
+
+
+if ($ShellCpp -notlike "*aceProjectSingleHwnd3D*" -or $ShellCpp -notlike "*ViewProjectionMatrix*" -or $ShellCpp -notlike "*Single-HWND 3D | RMB look | WASD move | Q/E vertical*") {
+    throw "AQ3D12 projected single-HWND 3D compositor missing."
+}
+Write-Host "PASS|single_hwnd_projected_3d_compositor_present"
+
+if ($ShellCpp -like "*Legacy composite viewport disabled by AQ3D11R1*") {
+    throw "Old legacy-disabled label still present."
+}
+Write-Host "PASS|old_legacy_label_removed"
+
+if ($ShellCpp -like "*renderAquariumResizeProxyViewport(ctx, rect)*") {
+    throw "AQ3D12 main path must not call resize proxy."
+}
+Write-Host "PASS|no_resize_proxy_call_in_main_path"
+
+if ($CameraCpp -notlike "*yaw_ -= deltaX*" -or $CameraCpp -notlike "*clampPitch*") {
+    throw "Camera mouse direction/pitch clamp missing."
+}
+Write-Host "PASS|camera_mouse_direction_and_pitch_clamp"
+
+$Probe = Join-Path $Root "Tools\AceAq3D12SingleHwndProbe.cpp"
+$CameraSrc = Join-Path $Root "Source\Private\AquariumRender\AceAquariumCamera.cpp"
+$Exe = Join-Path $BuildDir "AceAq3D12SingleHwndProbe.exe"
+
+$cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+if ($cl) {
+    Write-Host "INFO|compiler|cl.exe"
+    & $cl.Source /std:c++20 /EHsc /W4 $FoArg /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $CameraSrc
+    if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit code $LASTEXITCODE" }
+} else {
+    $gpp = Get-Command g++.exe -ErrorAction SilentlyContinue
+    if (-not $gpp) { $gpp = Get-Command g++ -ErrorAction SilentlyContinue }
+    if (-not $gpp) { throw "No C++ compiler found. Run from Developer PowerShell with cl.exe or install g++." }
+
+    Write-Host "INFO|compiler|g++"
+    & $gpp.Source -std=c++20 -Wall -Wextra -pedantic -I (Join-Path $Root "Source\Public") -o $Exe $Probe $CameraSrc
+    if ($LASTEXITCODE -ne 0) { throw "g++ failed with exit code $LASTEXITCODE" }
+}
+
+Push-Location $Root
+try {
+    & $Exe
+    if ($LASTEXITCODE -ne 0) { throw "AceAq3D12SingleHwndProbe failed with exit code $LASTEXITCODE" }
+}
+finally {
+    Pop-Location
+}
+
+Write-Host "PASS|ace_aq3d12_validation_complete"

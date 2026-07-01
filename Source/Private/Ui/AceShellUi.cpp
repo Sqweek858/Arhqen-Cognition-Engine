@@ -14,17 +14,31 @@
 #include "ArhqenCognitionEngine/AquariumRender/AceAquariumEmbeddedDx12Viewport.h"
 
 #include <Windowsx.h>
+#include <d2d1.h>
+#include <d2d1_1.h>
+#include <d3d11.h>
+#include <d3d12.h>
+#include <d3d11on12.h>
+#include <dxgi1_2.h>
+#include <dxgi1_3.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <ctime>
+#include <chrono>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <cwctype>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "dwrite.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
 
 namespace
 {
@@ -35,6 +49,73 @@ namespace
             std::clamp(g, 0.0f, 1.0f),
             std::clamp(b, 0.0f, 1.0f),
             std::clamp(a, 0.0f, 1.0f));
+    }
+
+    const char* aceDxgiFormatName(DXGI_FORMAT format)
+    {
+        switch (format)
+        {
+        case DXGI_FORMAT_B8G8R8A8_UNORM: return "B8G8R8A8_UNORM";
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB: return "B8G8R8A8_UNORM_SRGB";
+        case DXGI_FORMAT_R8G8B8A8_UNORM: return "R8G8B8A8_UNORM";
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB: return "R8G8B8A8_UNORM_SRGB";
+        case DXGI_FORMAT_R16G16B16A16_FLOAT: return "R16G16B16A16_FLOAT";
+        case DXGI_FORMAT_UNKNOWN: return "UNKNOWN";
+        default: return "OTHER";
+        }
+    }
+
+    const char* aceD3D12DimensionName(D3D12_RESOURCE_DIMENSION dimension)
+    {
+        switch (dimension)
+        {
+        case D3D12_RESOURCE_DIMENSION_BUFFER: return "BUFFER";
+        case D3D12_RESOURCE_DIMENSION_TEXTURE1D: return "TEXTURE1D";
+        case D3D12_RESOURCE_DIMENSION_TEXTURE2D: return "TEXTURE2D";
+        case D3D12_RESOURCE_DIMENSION_TEXTURE3D: return "TEXTURE3D";
+        default: return "UNKNOWN";
+        }
+    }
+
+    std::string aceHex32(std::uint64_t value)
+    {
+        std::ostringstream out;
+        out << "0x" << std::hex << value;
+        return out.str();
+    }
+
+    std::string aceD3D12ResourceDescText(const D3D12_RESOURCE_DESC& desc)
+    {
+        std::ostringstream out;
+        out << "d3d12_desc{dim=" << aceD3D12DimensionName(desc.Dimension)
+            << ",format=" << aceDxgiFormatName(desc.Format) << "(" << static_cast<unsigned>(desc.Format) << ")"
+            << ",size=" << desc.Width << "x" << desc.Height
+            << ",array=" << desc.DepthOrArraySize
+            << ",mips=" << desc.MipLevels
+            << ",samples=" << desc.SampleDesc.Count << ":" << desc.SampleDesc.Quality
+            << ",layout=" << static_cast<unsigned>(desc.Layout)
+            << ",flags=" << aceHex32(desc.Flags) << "}";
+        return out.str();
+    }
+
+    std::string aceDxgiSurfaceDescText(const DXGI_SURFACE_DESC& desc)
+    {
+        std::ostringstream out;
+        out << "dxgi_surface{format=" << aceDxgiFormatName(desc.Format) << "(" << static_cast<unsigned>(desc.Format) << ")"
+            << ",size=" << desc.Width << "x" << desc.Height
+            << ",samples=" << desc.SampleDesc.Count << ":" << desc.SampleDesc.Quality << "}";
+        return out.str();
+    }
+
+    std::string aceTexture2DDescText(const D3D11_TEXTURE2D_DESC& desc)
+    {
+        std::ostringstream out;
+        out << "d3d11_tex2d{format=" << aceDxgiFormatName(desc.Format) << "(" << static_cast<unsigned>(desc.Format) << ")"
+            << ",size=" << desc.Width << "x" << desc.Height
+            << ",bind=" << aceHex32(desc.BindFlags)
+            << ",misc=" << aceHex32(desc.MiscFlags)
+            << ",usage=" << static_cast<unsigned>(desc.Usage) << "}";
+        return out.str();
     }
 
     am::ui::UiRect aceRectAround(float x, float y, float width, float height)
@@ -50,7 +131,274 @@ namespace
         const float bottom = std::max(ay, by);
         return am::ui::makeUiRect(left, top, std::max(left + minThickness, right), std::max(top + minThickness, bottom));
     }
+
+
+    std::wstring aceTrimCommand(std::wstring value)
+    {
+        const auto first = value.find_first_not_of(L" \t\r\n");
+        const auto last = value.find_last_not_of(L" \t\r\n");
+        if (first == std::wstring::npos || last == std::wstring::npos)
+        {
+            return L"";
+        }
+        value = value.substr(first, last - first + 1);
+        if (!value.empty() && value.front() == L'/')
+        {
+            value.erase(value.begin());
+        }
+        for (wchar_t& ch : value)
+        {
+            ch = static_cast<wchar_t>(std::towlower(ch));
+        }
+        return value;
+    }
+
+    std::wstring aceFormatDouble(double value, int decimals = 2)
+    {
+        if (value < 0.0)
+        {
+            return L"n/a";
+        }
+        std::wstringstream ss;
+        ss << std::fixed << std::setprecision(decimals) << value;
+        return ss.str();
+    }
+
+    std::string aceFormatDoubleUtf8(double value, int decimals = 2)
+    {
+        if (value < 0.0)
+        {
+            return "n/a";
+        }
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(decimals) << value;
+        return ss.str();
+    }
+
+    std::wstring aceVec3Wide(const ace::aquarium_render::AceAqVec3& v)
+    {
+        std::wstringstream ss;
+        ss << std::fixed << std::setprecision(2) << L"(" << v.x << L", " << v.y << L", " << v.z << L")";
+        return ss.str();
+    }
+
+    std::string aceVec3Utf8(const ace::aquarium_render::AceAqVec3& v)
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2) << "(" << v.x << "," << v.y << "," << v.z << ")";
+        return ss.str();
+    }
+
+    std::wstring aceWideLossy(const std::string& text)
+    {
+        std::wstring out;
+        out.reserve(text.size());
+        for (unsigned char ch : text)
+        {
+            if (ch == '\t')
+            {
+                out.push_back(L' ');
+                out.push_back(L' ');
+                continue;
+            }
+            out.push_back(ch >= 32 ? static_cast<wchar_t>(ch) : L' ');
+        }
+        return out;
+    }
+
+    std::string aceNarrowLossy(const std::wstring& text)
+    {
+        std::string out;
+        out.reserve(text.size());
+        for (wchar_t ch : text)
+        {
+            if (ch == L'\t' || ch == L'\r' || ch == L'\n')
+            {
+                out.push_back(' ');
+                continue;
+            }
+            out.push_back(ch >= 32 && ch <= 126 ? static_cast<char>(ch) : '?');
+        }
+        return out;
+    }
+
+    std::string aceNarrowLossyLine(const std::wstring& text)
+    {
+        std::string out;
+        out.reserve(text.size());
+        for (wchar_t ch : text)
+        {
+            if (ch == L'\t')
+            {
+                out.push_back(' ');
+                out.push_back(' ');
+                continue;
+            }
+            if (ch == L'\r' || ch == L'\n')
+            {
+                continue;
+            }
+            out.push_back(ch >= 32 && ch <= 126 ? static_cast<char>(ch) : '?');
+        }
+        return out;
+    }
+
+    std::vector<std::string> aceDetailLogLinesFromBody(const std::wstring& body)
+    {
+        std::vector<std::string> lines;
+        if (body.find(L'\n') == std::wstring::npos)
+        {
+            return lines;
+        }
+
+        std::wstringstream input(body);
+        std::wstring line;
+        while (std::getline(input, line))
+        {
+            if (!line.empty() && line.back() == L'\r')
+            {
+                line.pop_back();
+            }
+            const std::string narrow = aceNarrowLossyLine(line);
+            if (!narrow.empty())
+            {
+                lines.push_back(narrow);
+            }
+        }
+        return lines;
+    }
+
+    std::vector<std::wstring> aceWrapEngineConsoleLine(const std::wstring& line, std::size_t maxChars = 118)
+    {
+        std::vector<std::wstring> out;
+        if (line.size() <= maxChars)
+        {
+            out.push_back(line);
+            return out;
+        }
+
+        std::size_t start = 0;
+        bool continuation = false;
+        while (start < line.size())
+        {
+            const std::wstring prefix = continuation ? L"  " : L"";
+            const std::size_t available = maxChars > prefix.size() ? maxChars - prefix.size() : maxChars;
+            std::size_t end = std::min(line.size(), start + available);
+            if (end < line.size())
+            {
+                const std::size_t softMin = start + std::min<std::size_t>(available, 48);
+                const std::size_t space = line.rfind(L' ', end);
+                if (space != std::wstring::npos && space >= softMin && space > start)
+                {
+                    end = space;
+                }
+            }
+
+            std::wstring chunk = line.substr(start, end - start);
+            while (!chunk.empty() && chunk.front() == L' ')
+            {
+                chunk.erase(chunk.begin());
+            }
+            while (!chunk.empty() && chunk.back() == L' ')
+            {
+                chunk.pop_back();
+            }
+            out.push_back(prefix + (chunk.empty() ? L" " : chunk));
+
+            start = end;
+            while (start < line.size() && line[start] == L' ')
+            {
+                ++start;
+            }
+            continuation = true;
+        }
+        return out;
+    }
+
+    std::wstring aceJoinLogLines(const std::vector<std::wstring>& lines, std::size_t maxLines)
+    {
+        if (lines.empty())
+        {
+            return L"";
+        }
+        const std::size_t count = std::min(maxLines, lines.size());
+        const std::size_t start = lines.size() - count;
+        std::wstringstream ss;
+        for (std::size_t i = start; i < lines.size(); ++i)
+        {
+            ss << lines[i];
+            if (i + 1 < lines.size())
+            {
+                ss << L'\n';
+            }
+        }
+        return ss.str();
+    }
+
+    template <typename Clock = std::chrono::steady_clock>
+    double aceElapsedMs(typename Clock::time_point start, typename Clock::time_point end)
+    {
+        return std::chrono::duration<double, std::milli>(end - start).count();
+    }
 }
+
+
+    struct AceSingleHwndProjectedPoint
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float depth = 0.0f;
+        bool visible = false;
+    };
+
+    AceSingleHwndProjectedPoint aceProjectSingleHwnd3D(
+        const ace::aquarium_render::AceAqMat4& viewProjection,
+        float worldX,
+        float worldY,
+        float worldZ,
+        am::ui::UiRect rect)
+    {
+        const float clipX =
+            worldX * viewProjection.m[0] +
+            worldY * viewProjection.m[4] +
+            worldZ * viewProjection.m[8] +
+            viewProjection.m[12];
+
+        const float clipY =
+            worldX * viewProjection.m[1] +
+            worldY * viewProjection.m[5] +
+            worldZ * viewProjection.m[9] +
+            viewProjection.m[13];
+
+        const float clipZ =
+            worldX * viewProjection.m[2] +
+            worldY * viewProjection.m[6] +
+            worldZ * viewProjection.m[10] +
+            viewProjection.m[14];
+
+        const float clipW =
+            worldX * viewProjection.m[3] +
+            worldY * viewProjection.m[7] +
+            worldZ * viewProjection.m[11] +
+            viewProjection.m[15];
+
+        if (clipW <= 0.001f)
+        {
+            return {};
+        }
+
+        const float ndcX = clipX / clipW;
+        const float ndcY = clipY / clipW;
+
+        AceSingleHwndProjectedPoint out{};
+        out.x = rect.left + (ndcX * 0.5f + 0.5f) * rect.width();
+        out.y = rect.top + (0.5f - ndcY * 0.5f) * rect.height();
+        out.depth = clipZ / clipW;
+        out.visible = out.x >= rect.left - 160.0f && out.x <= rect.right + 160.0f &&
+            out.y >= rect.top - 160.0f && out.y <= rect.bottom + 160.0f;
+        return out;
+    }
+
 
 namespace am::ui
 {
@@ -306,8 +654,11 @@ namespace am::ui
 
         if (renderTarget_)
         {
-            renderTarget_->Resize(D2D1::SizeU(static_cast<UINT32>(width_), static_cast<UINT32>(height_)));
-            applyPixelAlignedD2DTargetDpi();
+            std::string resizeError;
+            if (!resizeD2DDeviceContextBackbufferTarget(width_, height_, &resizeError))
+            {
+                discardDeviceResources();
+            }
             if (windowLiveResizeActive_)
             {
                 // ACE-AQ3D8: gradient_recreation_deferred_or_documented. During
@@ -442,6 +793,14 @@ namespace am::ui
                 GetCursorPos(&p);
                 ScreenToClient(parent_, &p);
 
+                auto ctx = makeContext();
+                if (engineLogOverlayVisible_ && handleEngineLogOverlayWheel(ctx, static_cast<float>(p.x), static_cast<float>(p.y), wheel))
+                {
+                    invalidate();
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+
                 if (environmentOpen_ && environmentModalRect_.contains(static_cast<float>(p.x), static_cast<float>(p.y)))
                 {
                     handleAquariumWheel(static_cast<float>(p.x), static_cast<float>(p.y), wheel);
@@ -450,7 +809,6 @@ namespace am::ui
                     return 0;
                 }
 
-                auto ctx = makeContext();
                 if (input_.hitTest(static_cast<float>(p.x), static_cast<float>(p.y)))
                 {
                     input_.onMouseWheel(ctx, static_cast<float>(p.x), static_cast<float>(p.y), wheel);
@@ -466,10 +824,93 @@ namespace am::ui
             return 0;
         }
 
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONDBLCLK:
+        {
+            const float x = static_cast<float>(GET_X_LPARAM(lParam));
+            const float y = static_cast<float>(GET_Y_LPARAM(lParam));
+
+            mouseX_ = x;
+            mouseY_ = y;
+            cyberBackground_.setMouse(x, y);
+
+            if (beginAquariumSingleHwndMouseLook(x, y, message == WM_RBUTTONDBLCLK ? "wm_rbutton_dblclk" : "wm_rbutton_down"))
+            {
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (environmentOpen_ && environmentModalRect_.contains(x, y))
+            {
+                // The Environment owns RMB while open so the OS context menu cannot
+                // steal focus from the single-HWND viewport path. A non-viewport RMB
+                // is still recorded by beginAquariumSingleHwndMouseLook as a miss or
+                // overlay block above.
+                if (handled) { *handled = true; }
+                return 0;
+            }
+            break;
+        }
+
+        case WM_RBUTTONUP:
+        {
+            const float x = static_cast<float>(GET_X_LPARAM(lParam));
+            const float y = static_cast<float>(GET_Y_LPARAM(lParam));
+
+            mouseX_ = x;
+            mouseY_ = y;
+            cyberBackground_.setMouse(x, y);
+
+            if (endAquariumSingleHwndMouseLook("wm_rbutton_up"))
+            {
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (environmentOpen_ && environmentModalRect_.contains(x, y))
+            {
+                if (handled) { *handled = true; }
+                return 0;
+            }
+            break;
+        }
+
+        case WM_CAPTURECHANGED:
+            if (aquariumSingleHwndMouseCaptured_)
+            {
+                cancelAquariumSingleHwndMouseLook("capture_lost");
+                if (handled) { *handled = true; }
+                return 0;
+            }
+            break;
+
+        case WM_CANCELMODE:
+        case WM_KILLFOCUS:
+            if (aquariumSingleHwndMouseLookActive_ || aquariumSingleHwndMouseCaptured_)
+            {
+                cancelAquariumSingleHwndMouseLook(message == WM_KILLFOCUS ? "kill_focus" : "cancel_mode");
+                if (handled) { *handled = true; }
+                return 0;
+            }
+            break;
+
         case WM_LBUTTONDOWN:
         {
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
+
+            if (engineLogOverlayVisible_)
+            {
+                auto ctx = makeContext();
+                if (handleEngineLogOverlayMouseDown(ctx, x, y))
+                {
+                    mouseCaptured_ = true;
+                    SetCapture(parent_);
+                    invalidate();
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+            }
 
             if (settingsOpen_)
             {
@@ -673,6 +1114,22 @@ namespace am::ui
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
 
+            if (engineLogOverlayVisible_)
+            {
+                auto ctx = makeContext();
+                if (handleEngineLogOverlayMouseUp(ctx, x, y))
+                {
+                    if (mouseCaptured_)
+                    {
+                        mouseCaptured_ = false;
+                        ReleaseCapture();
+                    }
+                    invalidate();
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+            }
+
             if (aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None)
             {
                 endAquariumPanelResize();
@@ -756,6 +1213,17 @@ namespace am::ui
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
 
+            mouseX_ = x;
+            mouseY_ = y;
+            cyberBackground_.setMouse(x, y);
+
+            if (aquariumSingleHwndMouseLookActive_ || aquariumSingleHwndMouseCaptured_)
+            {
+                updateAquariumSingleHwndMouseLook(x, y, "wm_mousemove_capture");
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
             if (aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None)
             {
                 updateAquariumPanelResize(x, y);
@@ -767,16 +1235,30 @@ namespace am::ui
             if (aquariumDraggingScroll_)
             {
                 updateAquariumScrollbarDrag(x, y);
-                invalidateAquariumChrome();
+                if (aquariumDraggingScroll_ == &engineLogOverlayScroll_)
+                {
+                    invalidateRect(inflateRect(engineLogOverlayRect_, 8.0f));
+                }
+                else
+                {
+                    invalidateAquariumChrome();
+                }
                 if (handled) { *handled = true; }
                 return 0;
             }
 
-            bool changed = false;
+            if (engineLogOverlayVisible_)
+            {
+                auto ctx = makeContext();
+                if (handleEngineLogOverlayMouseMove(ctx, x, y))
+                {
+                    invalidate();
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+            }
 
-            mouseX_ = x;
-            mouseY_ = y;
-            cyberBackground_.setMouse(x, y);
+            bool changed = false;
 
             if (environmentOpen_ && environmentModalRect_.contains(x, y))
             {
@@ -854,6 +1336,27 @@ namespace am::ui
             return TRUE;
 
         case WM_CHAR:
+            if ((wParam == L'`' || wParam == L'~') && D2DKeyboardState::current().noModifiers())
+            {
+                if (engineLogOverlaySuppressNextBacktickChar_)
+                {
+                    engineLogOverlaySuppressNextBacktickChar_ = false;
+                }
+                else
+                {
+                    toggleEngineLogOverlay();
+                }
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (engineLogOverlayVisible_ && handleEngineLogOverlayChar(wParam))
+            {
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
             if (commandPalette_.active())
             {
                 if (commandPalette_.onChar(wParam))
@@ -876,6 +1379,21 @@ namespace am::ui
         case WM_KEYDOWN:
         {
             const auto keyboard = D2DKeyboardState::current();
+
+            if (keyboard.noModifiers() && wParam == VK_OEM_3)
+            {
+                engineLogOverlaySuppressNextBacktickChar_ = true;
+                toggleEngineLogOverlay();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (engineLogOverlayVisible_ && handleEngineLogOverlayKeyDown(wParam, keyboard))
+            {
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
 
             if (keyboard.ctrl && wParam == VK_UP)
             {
@@ -1094,17 +1612,31 @@ namespace am::ui
         cyberBackground_.update(dtSeconds);
         cyberTextTime_ += std::clamp(dtSeconds, 0.0f, 0.10f);
 
+        if (aquariumDirectCompositionActive_ && (!aquariumUseSingleHwndCompositeViewport_ || !environmentOpen_ || !aquarium3DModeActive_))
+        {
+            resetAquariumDirectCompositionIfActive();
+        }
+
+        const bool viewportOverlayActive = isViewportLocalOverlayActive();
+        if (viewportOverlayActive != aquariumViewportLocalOverlayActiveLastFrame_)
+        {
+            aquariumViewportLocalOverlayActiveLastFrame_ = viewportOverlayActive;
+            ++aquariumViewportLayerModeSwitchCount_;
+            requestParentCompositedViewportHold(viewportOverlayActive ? 24u : 18u, viewportOverlayActive ? L"overlay-open" : L"overlay-close");
+        }
+        else if (!viewportOverlayActive && aquariumParentCompositedHoldFrames_ > 0)
+        {
+            --aquariumParentCompositedHoldFrames_;
+        }
+
         if (aquariumControllerReady_)
         {
             aquariumController_.Tick(dtSeconds);
 
             if (aquariumUseSingleHwndCompositeViewport_ && environmentOpen_ && aquarium3DModeActive_)
             {
-                // ACE-AQ3D14: Slate-style single-HWND viewport composition.
-                // The 3D workspace no longer drives a child DX12 HWND in the
-                // main path, so hover/click/resize cannot race D2D parent paint
-                // against a flip-model child swapchain. The scene is composed by
-                // the D2D shell from the retained Aquarium render model.
+                // ACE-AQ3D12: single-HWND 3D composition is the main path.
+                // No child HWND, no separate flip-model swapchain, no DWM resize circus.
                 if (aquariumEmbeddedDx12Viewport_.IsVisible())
                 {
                     aquariumEmbeddedDx12Viewport_.Hide();
@@ -1112,19 +1644,89 @@ namespace am::ui
                 }
                 aquariumEmbeddedViewportSyncNeeded_ = false;
                 aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
+                aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
 
-                if (aquariumController_.IsRunning() || windowLiveResizeActive_)
+                ace::aquarium_render::AceAqCameraInput input{};
+                const bool engineConsoleCapturesKeyboard = engineLogOverlayVisible_ && engineLogOverlayInputFocused_;
+                input.moveForward = !engineConsoleCapturesKeyboard && (GetAsyncKeyState('W') & 0x8000) != 0;
+                input.moveBackward = !engineConsoleCapturesKeyboard && (GetAsyncKeyState('S') & 0x8000) != 0;
+                input.moveLeft = !engineConsoleCapturesKeyboard && (GetAsyncKeyState('A') & 0x8000) != 0;
+                input.moveRight = !engineConsoleCapturesKeyboard && (GetAsyncKeyState('D') & 0x8000) != 0;
+                input.moveDown = !engineConsoleCapturesKeyboard && (GetAsyncKeyState('Q') & 0x8000) != 0;
+                input.moveUp = !engineConsoleCapturesKeyboard && (GetAsyncKeyState('E') & 0x8000) != 0;
+
+                const bool hasKeyboardCameraInput =
+                    input.moveForward || input.moveBackward ||
+                    input.moveLeft || input.moveRight ||
+                    input.moveDown || input.moveUp;
+
+                aquariumSingleHwndCamera_.UpdateFromInput(input, dtSeconds);
+
+                bool mouseLookChanged = false;
+                if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 && isAquariumSingleHwndViewportInputAvailable())
+                {
+                    POINT p{};
+                    GetCursorPos(&p);
+                    ScreenToClient(parent_, &p);
+                    const float mx = static_cast<float>(p.x);
+                    const float my = static_cast<float>(p.y);
+
+                    if (!aquariumSingleHwndMouseLookActive_ && isAquariumSingleHwndViewportPoint(mx, my) && !shouldAquariumViewportInputDeferToOverlay(mx, my))
+                    {
+                        ++aquariumViewportInputPollBeginCount_;
+                        mouseLookChanged = beginAquariumSingleHwndMouseLook(mx, my, "tick_poll_rbutton");
+                    }
+                    else if (aquariumSingleHwndMouseLookActive_)
+                    {
+                        const std::uint64_t beforeMoves = aquariumViewportInputSceneMoveCount_;
+                        updateAquariumSingleHwndMouseLook(mx, my, "tick_poll_move");
+                        mouseLookChanged = aquariumViewportInputSceneMoveCount_ != beforeMoves;
+                    }
+                }
+                else if (aquariumSingleHwndMouseLookActive_ || aquariumSingleHwndMouseCaptured_)
+                {
+                    mouseLookChanged = endAquariumSingleHwndMouseLook("tick_rbutton_released");
+                }
+
+                if (aquariumController_.IsRunning() || windowLiveResizeActive_ || hasKeyboardCameraInput || mouseLookChanged)
                 {
                     invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
                 }
             }
-            else if (windowLiveResizeActive_)
+            else if (windowLiveResizeActive_ || aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None || aquariumResizeQuarantineActive_)
             {
-                // ACE-AQ3D8: freeze the embedded DX12 child surface during live
-                // window resize. WM_SIZE spam updates pending dimensions only;
-                // the final child HWND sync and resize apply happen after
-                // WM_EXITSIZEMOVE. This avoids resize flicker while dragging.
+                // ACE-AQ3D11R5: no 2D/3D ping-pong during resize. Keep the DX12
+                // child viewport visible at its last stable rect, suspend child
+                // move/resize/swapchain resize, and apply the final rect once
+                // after a short stable delay.
                 aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
+                aquariumEmbeddedViewportStatus_ = L"Real DX12 3D resize freeze active";
+
+                if (!windowLiveResizeActive_ && aquariumPanelResizeTarget_ == AquariumPanelResizeTarget::None)
+                {
+                    aquariumResizeQuarantineDelaySeconds_ -= std::clamp(dtSeconds, 0.0f, 0.10f);
+                    if (aquariumResizeQuarantineDelaySeconds_ <= 0.0f)
+                    {
+                        aquariumResizeQuarantineActive_ = false;
+                        aquariumResizeQuarantineDelaySeconds_ = 0.0f;
+                        ++aquariumResizeQuarantineExitCount_;
+                        aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(false);
+                        aquariumEmbeddedViewportSyncNeeded_ = true;
+                    }
+                }
+
+                if (environmentOpen_ && aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_ && aquariumEmbeddedDx12Viewport_.IsVisible())
+                {
+                    std::string viewportError;
+                    if (!aquariumEmbeddedDx12Viewport_.RenderFrame(aquariumController_, aquariumSceneAdapter_, aquariumController_.DebugTruthEnabled(), dtSeconds, &viewportError))
+                    {
+                        aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D renderer unavailable during resize.";
+                    }
+                    else
+                    {
+                        aquariumActiveRenderPath_ = AceEngineRenderPath::ChildDx12;
+                    }
+                }
             }
             else
             {
@@ -1133,13 +1735,14 @@ namespace am::ui
                 if (environmentOpen_ && aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_ && aquariumEmbeddedDx12Viewport_.IsVisible())
                 {
                     std::string viewportError;
-                    if (!aquariumEmbeddedDx12Viewport_.RenderFrame(aquariumController_, aquariumSceneAdapter_, aquariumController_.DebugTruthEnabled(), &viewportError))
+                    if (!aquariumEmbeddedDx12Viewport_.RenderFrame(aquariumController_, aquariumSceneAdapter_, aquariumController_.DebugTruthEnabled(), dtSeconds, &viewportError))
                     {
-                        aquariumEmbeddedViewportStatus_ = L"DX12 Environment renderer unavailable; check logs.";
+                        aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D renderer unavailable; check logs.";
                     }
                     else if (aquariumEmbeddedDx12Viewport_.IsVisible())
                     {
-                        aquariumEmbeddedViewportStatus_ = L"DX12 Environment Mode active";
+                        aquariumActiveRenderPath_ = AceEngineRenderPath::ChildDx12;
+                        aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
                     }
                 }
             }
@@ -1207,38 +1810,200 @@ namespace am::ui
         return createTextFormats(error);
     }
 
+    bool AceShellUi::createD2DDeviceContextBackbufferTarget(std::string* error)
+    {
+        if (!renderTarget_ || !uiSwapChain_)
+        {
+            if (error) { *error = "D2D DeviceContext target requires a live DXGI swapchain."; }
+            return false;
+        }
+
+        renderTarget_->SetTarget(nullptr);
+        uiD2DTargetBitmap_.Reset();
+
+        Microsoft::WRL::ComPtr<IDXGISurface> backBuffer;
+        HRESULT hr = uiSwapChain_->GetBuffer(0, IID_PPV_ARGS(backBuffer.GetAddressOf()));
+        if (FAILED(hr) || !backBuffer)
+        {
+            if (error) { *error = hresultToString("IDXGISwapChain1::GetBuffer D2D DeviceContext target", hr); }
+            return false;
+        }
+
+        const D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+            96.0f,
+            96.0f);
+
+        hr = renderTarget_->CreateBitmapFromDxgiSurface(backBuffer.Get(), &props, uiD2DTargetBitmap_.GetAddressOf());
+        if (FAILED(hr) || !uiD2DTargetBitmap_)
+        {
+            if (error) { *error = hresultToString("ID2D1DeviceContext::CreateBitmapFromDxgiSurface UI backbuffer", hr); }
+            uiD2DTargetBitmap_.Reset();
+            return false;
+        }
+
+        renderTarget_->SetTarget(uiD2DTargetBitmap_.Get());
+        applyPixelAlignedD2DTargetDpi();
+        return true;
+    }
+
+    bool AceShellUi::resizeD2DDeviceContextBackbufferTarget(int width, int height, std::string* error)
+    {
+        if (!uiSwapChain_ || !renderTarget_)
+        {
+            return true;
+        }
+
+        renderTarget_->SetTarget(nullptr);
+        renderTarget_->Flush();
+        uiD2DTargetBitmap_.Reset();
+        d2dFrameCompositor_.NotifyResize(static_cast<std::uint32_t>(std::max(1, width)), static_cast<std::uint32_t>(std::max(1, height)));
+
+        const UINT w = static_cast<UINT>(std::max(1, width));
+        const UINT h = static_cast<UINT>(std::max(1, height));
+        const HRESULT hr = uiSwapChain_->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, 0);
+        if (FAILED(hr))
+        {
+            if (error) { *error = hresultToString("IDXGISwapChain1::ResizeBuffers D2D DeviceContext target", hr); }
+            return false;
+        }
+
+        return createD2DDeviceContextBackbufferTarget(error);
+    }
+
     bool AceShellUi::createDeviceResources(std::string* error)
     {
-        if (renderTarget_)
+        if (renderTarget_ && uiD2DTargetBitmap_)
         {
             return true;
         }
 
         RECT rc{};
         GetClientRect(parent_, &rc);
+        const UINT width = static_cast<UINT>(std::max<LONG>(1, rc.right - rc.left));
+        const UINT height = static_cast<UINT>(std::max<LONG>(1, rc.bottom - rc.top));
 
-        HRESULT hr = d2dFactory_->CreateHwndRenderTarget(
-            D2D1::RenderTargetProperties(
-                D2D1_RENDER_TARGET_TYPE_DEFAULT,
-                D2D1::PixelFormat(DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_IGNORE),
-                96.0f,
-                96.0f
-            ),
-            D2D1::HwndRenderTargetProperties(
-                parent_,
-                D2D1::SizeU(static_cast<UINT32>(rc.right - rc.left), static_cast<UINT32>(rc.bottom - rc.top)),
-                D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS
-            ),
-            &renderTarget_
-        );
-
-        if (FAILED(hr))
+        if (!uiD3D11Device_)
         {
-            if (error) { *error = hresultToString("ID2D1Factory::CreateHwndRenderTarget", hr); }
-            return false;
+            UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#if defined(_DEBUG)
+            flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+            // D3D11.0 is enough for the D2D DeviceContext swapchain target and
+            // avoids the old E_INVALIDARG trap when a runtime does not accept
+            // D3D_FEATURE_LEVEL_11_1 in the first creation attempt. Humanity
+            // survived COM; it can survive one less footgun.
+            const D3D_FEATURE_LEVEL levels[] = {
+                D3D_FEATURE_LEVEL_11_0,
+                D3D_FEATURE_LEVEL_10_1,
+                D3D_FEATURE_LEVEL_10_0
+            };
+            D3D_FEATURE_LEVEL actualLevel{};
+            HRESULT hr = D3D11CreateDevice(
+                nullptr,
+                D3D_DRIVER_TYPE_HARDWARE,
+                nullptr,
+                flags,
+                levels,
+                static_cast<UINT>(sizeof(levels) / sizeof(levels[0])),
+                D3D11_SDK_VERSION,
+                uiD3D11Device_.GetAddressOf(),
+                &actualLevel,
+                uiD3D11Context_.GetAddressOf());
+#if defined(_DEBUG)
+            if (FAILED(hr))
+            {
+                flags &= ~D3D11_CREATE_DEVICE_DEBUG;
+                hr = D3D11CreateDevice(
+                    nullptr,
+                    D3D_DRIVER_TYPE_HARDWARE,
+                    nullptr,
+                    flags,
+                    levels,
+                    static_cast<UINT>(sizeof(levels) / sizeof(levels[0])),
+                    D3D11_SDK_VERSION,
+                    uiD3D11Device_.GetAddressOf(),
+                    &actualLevel,
+                    uiD3D11Context_.GetAddressOf());
+            }
+#endif
+            if (FAILED(hr) || !uiD3D11Device_)
+            {
+                if (error) { *error = hresultToString("D3D11CreateDevice D2D DeviceContext UI target", hr); }
+                return false;
+            }
+
+            Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
+            hr = uiD3D11Device_.As(&dxgiDevice);
+            if (FAILED(hr) || !dxgiDevice)
+            {
+                if (error) { *error = hresultToString("Query IDXGIDevice D2D DeviceContext UI target", hr); }
+                return false;
+            }
+
+            Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+            hr = dxgiDevice->GetAdapter(adapter.GetAddressOf());
+            if (FAILED(hr) || !adapter)
+            {
+                if (error) { *error = hresultToString("IDXGIDevice::GetAdapter D2D DeviceContext UI target", hr); }
+                return false;
+            }
+
+            hr = adapter->GetParent(IID_PPV_ARGS(uiDxgiFactory_.GetAddressOf()));
+            if (FAILED(hr) || !uiDxgiFactory_)
+            {
+                if (error) { *error = hresultToString("IDXGIAdapter::GetParent IDXGIFactory2", hr); }
+                return false;
+            }
+
+            DXGI_SWAP_CHAIN_DESC1 desc{};
+            desc.Width = width;
+            desc.Height = height;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.Stereo = FALSE;
+            desc.SampleDesc.Count = 1;
+            desc.SampleDesc.Quality = 0;
+            desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            desc.BufferCount = 2;
+            desc.Scaling = DXGI_SCALING_STRETCH;
+            desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+            desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+
+            hr = uiDxgiFactory_->CreateSwapChainForHwnd(
+                uiD3D11Device_.Get(),
+                parent_,
+                &desc,
+                nullptr,
+                nullptr,
+                uiSwapChain_.GetAddressOf());
+            if (FAILED(hr) || !uiSwapChain_)
+            {
+                if (error) { *error = hresultToString("IDXGIFactory2::CreateSwapChainForHwnd D2D DeviceContext UI target", hr); }
+                return false;
+            }
+
+            uiDxgiFactory_->MakeWindowAssociation(parent_, DXGI_MWA_NO_ALT_ENTER);
+
+            hr = d2dFactory_->CreateDevice(dxgiDevice.Get(), uiD2DDevice_.GetAddressOf());
+            if (FAILED(hr) || !uiD2DDevice_)
+            {
+                if (error) { *error = hresultToString("ID2D1Factory1::CreateDevice D2D DeviceContext UI target", hr); }
+                return false;
+            }
+
+            hr = uiD2DDevice_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, renderTarget_.GetAddressOf());
+            if (FAILED(hr) || !renderTarget_)
+            {
+                if (error) { *error = hresultToString("ID2D1Device::CreateDeviceContext UI target", hr); }
+                return false;
+            }
         }
 
-        applyPixelAlignedD2DTargetDpi();
+        if (!createD2DDeviceContextBackbufferTarget(error))
+        {
+            return false;
+        }
 
         if (!createBrushes(error))
         {
@@ -1484,7 +2249,33 @@ namespace am::ui
         inputBrush_.Reset();
         inputFocusedBrush_.Reset();
 
+        aquariumSlateViewportBitmap_.Reset();
+        aquariumSlateViewportBitmapExtent_ = {};
+        resetAquariumD2DTextureBridge();
+        if (renderTarget_)
+        {
+            renderTarget_->SetTarget(nullptr);
+        }
+        uiD2DTargetBitmap_.Reset();
         renderTarget_.Reset();
+        uiD2DDevice_.Reset();
+        d2dFrameCompositor_.Reset();
+        d2dViewportBridgePolicy_.Reset();
+        d2dViewportBridgeRuntime_.Reset();
+        d2dViewportCopyScheduler_.Reset();
+        d2dViewportTextureCache_.Reset();
+        d2dPresentScheduler_.Reset();
+        d2dFrameDiagnostics_.Reset();
+        d2dCompositorAudit_.Reset();
+        d2dFrameTransaction_.Reset();
+        slateFrameElements_.Reset();
+        slateRendererPipeline_.Reset();
+        slateLayerTree_.Reset();
+        slatePaintJournal_.Reset();
+        uiSwapChain_.Reset();
+        uiDxgiFactory_.Reset();
+        uiD3D11Context_.Reset();
+        uiD3D11Device_.Reset();
         D2DCachedEffects::reset();
     }
 
@@ -1495,11 +2286,12 @@ namespace am::ui
             return;
         }
 
-        // ACE-UI3F: keep the HwndRenderTarget in explicit 96-DPI DIPs so the
-        // existing Arhqen UI layout remains pixel-space. UI3 still captures
-        // monitor DPI for placement/scaling diagnostics, but D2D must not
-        // implicitly scale every coordinate on high-DPI monitors. That was
-        // the bug that pushed panels/text far outside their intended rects.
+        // ACE-UI3F/VTBRIDGE4: keep the modern D2D DeviceContext in explicit
+        // 96-DPI DIPs so the existing Arhqen UI layout remains pixel-space.
+        // UI3 still captures monitor DPI for placement/scaling diagnostics,
+        // but D2D must not implicitly scale every coordinate on high-DPI
+        // monitors. That was the bug that pushed panels/text far outside
+        // their intended rects.
         renderTarget_->SetDpi(96.0f, 96.0f);
         ++d2dPixelDpiFixApplyCount_;
     }
@@ -1571,6 +2363,9 @@ namespace am::ui
         input_.setPlaceholder(L"Command or note for Arhqen Cognition Engine...");
         input_.setText(L"");
         input_.setFocused(true);
+        engineLogOverlayInput_.setPlaceholder(L"engine command: stat_rhi, stat_coords, stat_fps, clear_log...");
+        engineLogOverlayInput_.setText(L"");
+        engineLogOverlayInput_.setFocused(false);
 
         sendButton_.setLabel(L"");
         sendButton_.setEnabled(true);
@@ -1583,6 +2378,9 @@ namespace am::ui
             {L"show_concepts", L"Concepts", L"Append concept list from backend.", L"/concepts"},
             {L"sample_concept", L"Insert concept command", L"Insert a parser command into the input field.", L""},
             {L"cache_stats", L"Cache stats", L"Append font/layout cache information.", L""},
+            {L"stat_coords", L"Engine coords", L"Append camera, viewport, scenario, and agent coordinates.", L"stat_coords"},
+            {L"stat_rhi", L"RHI stats", L"Append DX12/RHI viewport counters and active render path.", L"stat_rhi"},
+            {L"stat_fps", L"FPS stats", L"Append rolling CPU frame timing stats.", L"stat_fps"},
             {L"ui_debug", L"UI debug overlay", L"Toggle retained-layout/draw/dirty rect debug overlay.", L"F9"},
             {L"ui_stats", L"UI subsystem stats", L"Append UI5-UI11 subsystem counters.", L""},
             {L"seed_demo", L"Seed demo messages", L"Add messages for scroll testing.", L""},
@@ -1594,6 +2392,7 @@ namespace am::ui
             {L"F1", L"Shortcut help", L"Global"},
             {L"F12", L"Diagnostics", L"Global"},
             {L"F9", L"UI debug overlay", L"Development"},
+            {L"`", L"Docked engine log console", L"Development"},
             {L"Esc", L"Close overlay", L"Global"},
             {L"Enter", L"Send", L"Input"},
             {L"/rename name", L"Rename active conversation", L"Workspaces"},
@@ -1606,6 +2405,7 @@ namespace am::ui
 
     void AceShellUi::render()
     {
+        const auto acePerfFrameStart = std::chrono::steady_clock::now();
         std::string error;
         if (!createDeviceResources(&error))
         {
@@ -1619,63 +2419,297 @@ namespace am::ui
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
 
         auto ctx = makeContext();
+        const UiRect dirtyRect = makeUiRect(
+            static_cast<float>(ps.rcPaint.left),
+            static_cast<float>(ps.rcPaint.top),
+            static_cast<float>(ps.rcPaint.right),
+            static_cast<float>(ps.rcPaint.bottom));
+
+        AceD2DFrameInput d2dFrameInput{};
+        d2dFrameInput.width = static_cast<std::uint32_t>(std::max(1, width_));
+        d2dFrameInput.height = static_cast<std::uint32_t>(std::max(1, height_));
+        d2dFrameInput.dirtyRect = dirtyRect.empty() ? makeUiRect(0.0f, 0.0f, ctx.width, ctx.height) : dirtyRect;
+        d2dFrameInput.environmentOpen = environmentOpen_;
+        d2dFrameInput.viewport3DActive = aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_;
+        d2dFrameInput.hasDxgiSwapChain = uiSwapChain_ != nullptr;
+        d2dFrameInput.liveResize = windowLiveResizeActive_ || aquariumResizeQuarantineActive_;
+        d2dFrameInput.diagnosticsVisible = diagnostics_.visible();
+        d2dFrameInput.overlayVisible = engineLogOverlayVisible_ || shortcutHelp_.visible() || commandPalette_.active();
+        d2dFrameInput.invalidationSerial = d2dFrameInvalidationSerial_;
+        d2dFrameInput.viewportResourceEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+        const AceD2DFramePlan d2dFramePlan = d2dFrameCompositor_.BeginFrame(d2dFrameInput);
+        const UiRect effectiveDirtyRect = d2dFramePlan.fullFrameRedraw ? d2dFramePlan.paintRect : d2dFrameInput.dirtyRect;
+
+        slateFrameElements_.BeginFrame(
+            d2dFrameCompositor_.Stats().frameNumber,
+            makeUiRect(0.0f, 0.0f, ctx.width, ctx.height),
+            effectiveDirtyRect,
+            slate::AceSlateFramePolicy::FlipModelFullFrame(static_cast<std::uint32_t>(std::max(1, width_)), static_cast<std::uint32_t>(std::max(1, height_))));
+        slateFrameElements_.MakeBox(0, makeUiRect(0.0f, 0.0f, ctx.width, ctx.height), slate::AceSlateColor::Black(1.0f), slate::AceSlateDrawEffect::PixelSnap | slate::AceSlateDrawEffect::ForceOpaque, "full_frame_clear_contract");
+        if (environmentOpen_ && aquarium3DModeActive_ && !aquariumEmbeddedViewportRect_.empty())
+        {
+            slate::AceSlateViewportDescriptor viewportElement{};
+            viewportElement.valid = aquariumActiveRenderPath_ == AceEngineRenderPath::Dx12D2DTextureBridge;
+            viewportElement.width = static_cast<std::uint32_t>(std::max(0.0f, aquariumEmbeddedViewportRect_.width()));
+            viewportElement.height = static_cast<std::uint32_t>(std::max(0.0f, aquariumEmbeddedViewportRect_.height()));
+            viewportElement.allowScaling = true;
+            viewportElement.ignoreAlpha = true;
+            viewportElement.resourceEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+            slateFrameElements_.MakeViewport(20, aquariumEmbeddedViewportRect_, viewportElement, slate::AceSlateDrawEffect::IgnoreTextureAlpha | slate::AceSlateDrawEffect::PixelSnap, slate::AceSlateColor::White(1.0f), "aquarium_gpu_viewport_element_contract");
+        }
+        slate::AceSlatePipelineInput slatePipelineInput{};
+        slatePipelineInput.invalidation.windowRect = makeUiRect(0.0f, 0.0f, ctx.width, ctx.height);
+        slatePipelineInput.invalidation.osDirtyRect = d2dFrameInput.dirtyRect;
+        slatePipelineInput.invalidation.viewportRect = aquariumEmbeddedViewportRect_;
+        slatePipelineInput.invalidation.flipSwapChain = uiSwapChain_ != nullptr;
+        slatePipelineInput.invalidation.deviceContextTarget = renderTarget_ != nullptr;
+        slatePipelineInput.invalidation.viewportActive = aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_;
+        slatePipelineInput.invalidation.liveResize = windowLiveResizeActive_ || aquariumResizeQuarantineActive_;
+        slatePipelineInput.invalidation.overlayVisible = engineLogOverlayVisible_ || shortcutHelp_.visible() || commandPalette_.active();
+        slatePipelineInput.invalidation.animationActive = true;
+        slatePipelineInput.invalidation.textSelectionActive = engineLogHasTextSelection();
+        slatePipelineInput.invalidation.diagnosticsVisible = diagnostics_.visible();
+        slatePipelineInput.invalidation.invalidationSerial = d2dFrameInvalidationSerial_;
+        slatePipelineInput.invalidation.resizeEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+        slatePipelineInput.invalidation.viewportResourceEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+        slatePipelineInput.invalidation.frameNumber = d2dFrameCompositor_.Stats().frameNumber;
+        slatePipelineInput.framePolicy = slate::AceSlateFramePolicy::FlipModelFullFrame(static_cast<std::uint32_t>(std::max(1, width_)), static_cast<std::uint32_t>(std::max(1, height_)));
+        slatePipelineInput.resourceEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+        slatePipelineInput.viewportAsElement = true;
+        slatePipelineInput.debugValidateLayerOrder = true;
+        const auto slatePipelineOutput = slateRendererPipeline_.Build(slateFrameElements_, slatePipelineInput);
+        slateLayerTree_.Build(slateFrameElements_);
+        slatePaintJournal_.RecordFrame(slateFrameElements_, d2dFrameCompositor_.Stats().frameNumber, slatePipelineInput.invalidation.windowRect, slatePipelineOutput.fullFrame);
+        d2dFrameCompositor_.RecordSlateElements(slateFrameElements_);
+        d2dFrameDiagnostics_.BeginFrame(d2dFrameCompositor_.Stats().frameNumber, aquariumD2DBridgeSharedBitmapRecreateCount_, slatePipelineOutput.invalidationPlan.paintRect, slatePipelineOutput.fullFrame);
+        d2dFrameDiagnostics_.RecordPhase(AceD2DFramePhase::BuildElementList, 0.0, slatePipelineOutput.valid ? "slate_pipeline_ok" : "slate_pipeline_failed");
+        if (slatePipelineOutput.fullFrame)
+        {
+            d2dFrameDiagnostics_.RecordFullFrameRedraw();
+        }
+        else
+        {
+            d2dFrameDiagnostics_.RecordPartialPaintRejected();
+        }
+        AceD2DCompositorAuditInput auditInput{};
+        auditInput.framePlan = d2dFramePlan;
+        auditInput.bridgeStats = d2dViewportBridgeRuntime_.Stats();
+        auditInput.slateStats = slateRendererPipeline_.Stats();
+        auditInput.hasSwapChain = uiSwapChain_ != nullptr;
+        auditInput.hasDeviceContext = renderTarget_ != nullptr;
+        auditInput.readbackActive = false;
+        auditInput.legacyFallback = false;
+        auditInput.fastPartialPaintAllowed = d2dFrameCompositor_.AllowsFastPartialViewportPaint();
+        auditInput.viewportActive = aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_;
+        auditInput.fullFrameRedraw = d2dFrameCompositor_.RequiresFullFrameRedraw();
+        auditInput.frameNumber = d2dFrameCompositor_.Stats().frameNumber;
+        d2dCompositorAudit_.Run(auditInput);
+
         uiDrawCommands_.BeginFrame();
         ++aceUi7DrawCommandFrameCount_;
         uiDrawCommands_.RoundedRect(mainRect_, 18.0f, 0);
 
-        const float textPulse = 0.5f + 0.5f * std::sin(cyberTextTime_ * 2.10f);
-        D2DCyberTextState cyberText;
-        cyberText.enabled = true;
-        cyberText.primaryAlpha = 0.92f + textPulse * 0.08f;
-        cyberText.mutedAlpha = 0.72f + textPulse * 0.12f;
-        cyberText.driftX = std::sin(cyberTextTime_ * 0.73f) * 0.22f;
-        cyberText.driftY = std::cos(cyberTextTime_ * 0.61f) * 0.16f;
-        cyberText.glowAlpha = 0.08f + textPulse * 0.10f;
-        D2DCyberText::setState(cyberText);
-
-        renderBackground(ctx);
-        if (!environmentOpen_)
+        const bool fastAquariumViewportPaint = d2dFrameCompositor_.AllowsFastPartialViewportPaint() && renderFastAquariumViewportFrame(ctx, effectiveDirtyRect);
+        if (!fastAquariumViewportPaint)
         {
-            renderAppTopBar(ctx);
-            renderSideNav(ctx);
-        }
+            ++aquariumFullViewportPaintCount_;
+            const float textPulse = 0.5f + 0.5f * std::sin(cyberTextTime_ * 2.10f);
+            D2DCyberTextState cyberText;
+            cyberText.enabled = true;
+            cyberText.primaryAlpha = 0.92f + textPulse * 0.08f;
+            cyberText.mutedAlpha = 0.72f + textPulse * 0.12f;
+            cyberText.driftX = std::sin(cyberTextTime_ * 0.73f) * 0.22f;
+            cyberText.driftY = std::cos(cyberTextTime_ * 0.61f) * 0.16f;
+            cyberText.glowAlpha = 0.08f + textPulse * 0.10f;
+            D2DCyberText::setState(cyberText);
 
-        // ACE-UI1R2: while Environment is open, the chat/home layer stays behind
-        // the frosted workspace overlay instead of bleeding through and colliding
-        // with Logs / Episodes.
-        if (!environmentOpen_)
-        {
-            renderMainPanel(ctx);
-            messageList_.render(ctx);
-
-            if (messageList_.size() == 0)
+            renderBackground(ctx);
+            if (!environmentOpen_)
             {
-                renderEmptyState(ctx);
+                renderAppTopBar(ctx);
+                renderSideNav(ctx);
             }
 
-            input_.render(ctx);
-            renderSendCircle(ctx);
-            autocomplete_.render(ctx);
+            // ACE-UI1R2: while Environment is open, the chat/home layer stays behind
+            // the frosted workspace overlay instead of bleeding through and colliding
+            // with Logs / Episodes.
+            if (!environmentOpen_)
+            {
+                renderMainPanel(ctx);
+                messageList_.render(ctx);
+
+                if (messageList_.size() == 0)
+                {
+                    renderEmptyState(ctx);
+                }
+
+                input_.render(ctx);
+                renderSendCircle(ctx);
+                autocomplete_.render(ctx);
+            }
+
+            toastCenter_.render(ctx);
+            diagnostics_.render(ctx);
+            shortcutHelp_.render(ctx);
+            commandPalette_.render(ctx);
+            renderSettingsModal(ctx);
+            renderEnvironmentPlaceholder(ctx);
+            renderUiDebugOverlay(ctx);
+            renderEngineLogOverlay(ctx);
+
+            D2DCyberText::reset();
         }
 
-        toastCenter_.render(ctx);
-        diagnostics_.render(ctx);
-        shortcutHelp_.render(ctx);
-        commandPalette_.render(ctx);
-        renderSettingsModal(ctx);
-        renderEnvironmentPlaceholder(ctx);
-        renderUiDebugOverlay(ctx);
-
-        D2DCyberText::reset();
-
         const HRESULT hr = renderTarget_->EndDraw();
+        d2dFrameCompositor_.RecordEndDraw(hr);
+        d2dFrameDiagnostics_.RecordEndDraw(hr);
 
         if (hr == D2DERR_RECREATE_TARGET)
         {
             discardDeviceResources();
         }
+        else if (FAILED(hr))
+        {
+            discardDeviceResources();
+        }
+        else if (uiSwapChain_)
+        {
+            const auto acePerfPresentStart = std::chrono::steady_clock::now();
+            const HRESULT presentHr = uiSwapChain_->Present(1, 0);
+            const double presentMs = aceElapsedMs(acePerfPresentStart, std::chrono::steady_clock::now());
+            d2dFrameCompositor_.RecordPresent(presentHr, presentMs);
+            d2dFrameDiagnostics_.RecordPresent(presentHr, presentMs);
+            AceD2DPresentInput presentInput{};
+            presentInput.hasSwapChain = uiSwapChain_ != nullptr;
+            presentInput.fullFrameRedraw = true;
+            presentInput.liveResize = windowLiveResizeActive_ || aquariumResizeQuarantineActive_;
+            presentInput.viewportActive = aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_;
+            presentInput.deviceLost = false;
+            presentInput.frameNumber = d2dFrameCompositor_.Stats().frameNumber;
+            presentInput.resizeEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+            presentInput.frameRect = makeUiRect(0.0f, 0.0f, ctx.width, ctx.height);
+            const AceD2DPresentPlan presentPlan = d2dPresentScheduler_.BuildPlan(presentInput);
+            d2dPresentScheduler_.RecordPresent(presentPlan, presentHr, presentMs);
+            slateRendererPipeline_.CommitPresent(presentHr);
+            if (presentHr == DXGI_ERROR_DEVICE_REMOVED || presentHr == DXGI_ERROR_DEVICE_RESET)
+            {
+                discardDeviceResources();
+            }
+        }
+        d2dFrameCompositor_.EndFrame();
+        d2dFrameDiagnostics_.CompleteFrame(aceElapsedMs(acePerfFrameStart, std::chrono::steady_clock::now()));
+
+        // ACE-UI12: defer DirectComposition teardown until after the parent D2D
+        // frame has been submitted. This mirrors Slate's idea that a viewport is
+        // just one paint element in the window draw list: when a UI layer opens,
+        // keep the previous scene visual alive until the first parent-composited
+        // frame is already on the HWND. No black blink, no one-frame emotional
+        // support rectangle pretending to be a viewport.
+        if (aquariumResetDirectCompositionAfterPaint_)
+        {
+            aquariumResetDirectCompositionAfterPaint_ = false;
+            resetAquariumDirectCompositionIfActive();
+            if (!aquariumEmbeddedViewportRect_.empty())
+            {
+                invalidateRect(aquariumEmbeddedViewportRect_);
+            }
+        }
 
         EndPaint(parent_, &ps);
+
+        const auto acePerfFrameEnd = std::chrono::steady_clock::now();
+        AceEnginePerfSample sample{};
+        sample.frameMs = aceElapsedMs(acePerfFrameStart, acePerfFrameEnd);
+        sample.uiMs = sample.frameMs;
+        sample.layoutMs = -1.0;
+        sample.aquariumBuildMs = enginePerfStats_.TakeLastAquariumBuildMs();
+        sample.rhiRenderMs = enginePerfStats_.TakeLastRhiRenderMs();
+        sample.presentOrCompositeMs = enginePerfStats_.TakeLastPresentOrCompositeMs();
+        sample.fallbackPath = aquariumActiveRenderPath_;
+        enginePerfStats_.Push(sample);
+    }
+
+    bool AceShellUi::canUseFastAquariumViewportFrame(UiRect dirtyRect) const
+    {
+        if (!environmentOpen_ || !aquarium3DModeActive_ || !aquariumUseSingleHwndCompositeViewport_)
+        {
+            return false;
+        }
+        if (uiSwapChain_ && d2dFrameCompositor_.RequiresFullFrameRedraw())
+        {
+            return false;
+        }
+        if (dirtyRect.empty() || aquariumEmbeddedViewportRect_.empty())
+        {
+            return false;
+        }
+        if (windowLiveResizeActive_ || aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None || aquariumResizeQuarantineActive_)
+        {
+            return false;
+        }
+        if (settingsOpen_ || diagnostics_.visible() || shortcutHelp_.visible() || commandPalette_.active() || uiDebugOverlay_.Visible())
+        {
+            return false;
+        }
+
+        const UiRect dynamicRect = currentAquariumViewportDynamicLayerRect();
+        const float pad = 4.0f;
+        return dirtyRect.left >= dynamicRect.left - pad &&
+            dirtyRect.top >= dynamicRect.top - pad &&
+            dirtyRect.right <= dynamicRect.right + pad &&
+            dirtyRect.bottom <= dynamicRect.bottom + pad;
+    }
+
+    UiRect AceShellUi::currentAquariumViewportDynamicLayerRect() const
+    {
+        UiRect dynamicRect = aquariumEmbeddedViewportRect_;
+        auto unite = [](UiRect a, UiRect b) -> UiRect
+        {
+            if (a.empty()) { return b; }
+            if (b.empty()) { return a; }
+            return makeUiRect(
+                std::min(a.left, b.left),
+                std::min(a.top, b.top),
+                std::max(a.right, b.right),
+                std::max(a.bottom, b.bottom));
+        };
+
+        dynamicRect = unite(dynamicRect, aquariumTelemetryOverlayRect_);
+        if (engineLogOverlayVisible_)
+        {
+            dynamicRect = unite(dynamicRect, engineLogOverlayRect_);
+        }
+        return dynamicRect;
+    }
+
+    bool AceShellUi::renderFastAquariumViewportFrame(D2DRenderContext& ctx, UiRect dirtyRect)
+    {
+        if (!canUseFastAquariumViewportFrame(dirtyRect) || !ctx.target)
+        {
+            return false;
+        }
+
+        const auto snapshot = aquariumController_.BuildSnapshot();
+        const UiRect viewportSurface = aquariumEmbeddedViewportRect_;
+        if (viewportSurface.empty())
+        {
+            return false;
+        }
+
+        ++aquariumFastViewportPaintCount_;
+
+        // ACE-PERF1: UE/Slate does not rebuild the whole chrome tree just because
+        // the scene viewport needs another image. Treat the viewport as a retained
+        // paint layer: repaint only the dynamic viewport/HUD/console stack and let
+        // D2D_PRESENT_OPTIONS_RETAIN_CONTENTS preserve the side panels. Humanity
+        // may recover from overdraw eventually, but we do not need to help it fail.
+        const UiRect clipRect = currentAquariumViewportDynamicLayerRect();
+        ctx.target->PushAxisAlignedClip(clipRect.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        renderAquariumDx12ViewportSurface(ctx, viewportSurface, snapshot.debugTruthEnabled);
+        renderAquariumViewportHudLayer(ctx, viewportSurface, snapshot);
+        renderEngineLogOverlay(ctx);
+        ctx.target->PopAxisAlignedClip();
+        return true;
     }
 
     void AceShellUi::renderBackground(D2DRenderContext& ctx)
@@ -2086,7 +3120,204 @@ namespace am::ui
         return am::ui::makeUiRect(0, 0, 0, 0);
     }
 
+    bool AceShellUi::isAquariumSingleHwndViewportInputAvailable() const
+    {
+        return parent_ != nullptr &&
+               aquariumUseSingleHwndCompositeViewport_ &&
+               environmentOpen_ &&
+               aquarium3DModeActive_ &&
+               aquariumEmbeddedViewportVisible_ &&
+               !aquariumEmbeddedViewportRect_.empty();
+    }
 
+    bool AceShellUi::isAquariumSingleHwndViewportPoint(float x, float y) const
+    {
+        return isAquariumSingleHwndViewportInputAvailable() && aquariumEmbeddedViewportRect_.contains(x, y);
+    }
+
+    bool AceShellUi::shouldAquariumViewportInputDeferToOverlay(float x, float y) const
+    {
+        if (!isAquariumSingleHwndViewportInputAvailable())
+        {
+            return true;
+        }
+
+        if (settingsOpen_ || commandPalette_.active() || shortcutHelp_.visible())
+        {
+            return true;
+        }
+
+        if (engineLogOverlayVisible_ && engineLogOverlayRect_.contains(x, y))
+        {
+            return true;
+        }
+
+        if (diagnostics_.visible())
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    bool AceShellUi::beginAquariumSingleHwndMouseLook(float x, float y, const char* reason)
+    {
+        ++aquariumViewportInputRmbDownCount_;
+        aquariumViewportInputLastX_ = x;
+        aquariumViewportInputLastY_ = y;
+        aquariumViewportInputLastDeltaX_ = 0.0f;
+        aquariumViewportInputLastDeltaY_ = 0.0f;
+
+        if (shouldAquariumViewportInputDeferToOverlay(x, y))
+        {
+            ++aquariumViewportInputOverlayBlockedCount_;
+            aquariumViewportInputLastRoute_ = reason ? std::string("blocked_overlay:") + reason : "blocked_overlay";
+            return false;
+        }
+
+        if (!isAquariumSingleHwndViewportPoint(x, y))
+        {
+            ++aquariumViewportInputMissCount_;
+            aquariumViewportInputLastRoute_ = reason ? std::string("miss:") + reason : "miss";
+            return false;
+        }
+
+        ++aquariumViewportInputHitCount_;
+        if (!aquariumSingleHwndMouseLookActive_)
+        {
+            ++aquariumViewportInputBeginCount_;
+        }
+
+        aquariumSingleHwndMouseLookActive_ = true;
+        aquariumSingleHwndMouseCaptured_ = true;
+        aquariumSingleHwndLastMouseX_ = x;
+        aquariumSingleHwndLastMouseY_ = y;
+        aquariumViewportInputLastRoute_ = reason ? std::string("begin:") + reason : "begin";
+
+        if (parent_ && GetCapture() != parent_)
+        {
+            SetCapture(parent_);
+        }
+        SetFocus(parent_);
+        invalidateRect(aquariumEmbeddedViewportRect_);
+        ++aquariumViewportInputInvalidationCount_;
+        return true;
+    }
+
+    bool AceShellUi::updateAquariumSingleHwndMouseLook(float x, float y, const char* reason)
+    {
+        aquariumViewportInputLastX_ = x;
+        aquariumViewportInputLastY_ = y;
+
+        if (!aquariumSingleHwndMouseLookActive_)
+        {
+            aquariumViewportInputLastRoute_ = reason ? std::string("move_ignored:") + reason : "move_ignored";
+            return false;
+        }
+
+        const float dx = x - aquariumSingleHwndLastMouseX_;
+        const float dy = y - aquariumSingleHwndLastMouseY_;
+        aquariumSingleHwndLastMouseX_ = x;
+        aquariumSingleHwndLastMouseY_ = y;
+        aquariumViewportInputLastDeltaX_ = dx;
+        aquariumViewportInputLastDeltaY_ = dy;
+
+        if (std::fabs(dx) <= 0.0001f && std::fabs(dy) <= 0.0001f)
+        {
+            ++aquariumViewportInputZeroDeltaMoveCount_;
+            aquariumViewportInputLastRoute_ = reason ? std::string("move_zero:") + reason : "move_zero";
+            return true;
+        }
+
+        aquariumSingleHwndCamera_.ApplyMouseDelta(dx, dy);
+        ++aquariumViewportInputSceneMoveCount_;
+        aquariumViewportInputLastRoute_ = reason ? std::string("scene_move:") + reason : "scene_move";
+        invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
+        ++aquariumViewportInputInvalidationCount_;
+        return true;
+    }
+
+    bool AceShellUi::endAquariumSingleHwndMouseLook(const char* reason)
+    {
+        ++aquariumViewportInputRmbUpCount_;
+        if (!aquariumSingleHwndMouseLookActive_ && !aquariumSingleHwndMouseCaptured_)
+        {
+            aquariumViewportInputLastRoute_ = reason ? std::string("up_idle:") + reason : "up_idle";
+            return false;
+        }
+
+        aquariumSingleHwndMouseLookActive_ = false;
+        const bool releaseMouseCapture = aquariumSingleHwndMouseCaptured_ && parent_ && GetCapture() == parent_;
+        aquariumSingleHwndMouseCaptured_ = false;
+        if (releaseMouseCapture)
+        {
+            ReleaseCapture();
+        }
+        ++aquariumViewportInputEndCount_;
+        aquariumViewportInputLastRoute_ = reason ? std::string("end:") + reason : "end";
+        invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
+        ++aquariumViewportInputInvalidationCount_;
+        return true;
+    }
+
+    void AceShellUi::cancelAquariumSingleHwndMouseLook(const char* reason)
+    {
+        if (!aquariumSingleHwndMouseLookActive_ && !aquariumSingleHwndMouseCaptured_)
+        {
+            return;
+        }
+
+        if (reason && std::string(reason) == "capture_lost")
+        {
+            ++aquariumViewportInputCaptureLostCount_;
+        }
+        else
+        {
+            ++aquariumViewportInputCancelCount_;
+        }
+
+        aquariumSingleHwndMouseLookActive_ = false;
+        aquariumSingleHwndMouseCaptured_ = false;
+        aquariumViewportInputLastDeltaX_ = 0.0f;
+        aquariumViewportInputLastDeltaY_ = 0.0f;
+        aquariumViewportInputLastRoute_ = reason ? std::string("cancel:") + reason : "cancel";
+        invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
+        ++aquariumViewportInputInvalidationCount_;
+    }
+
+    std::string AceShellUi::aquariumViewportInputDiagnostics() const
+    {
+        std::ostringstream os;
+        os << "vtbridge5_input;active=" << (aquariumSingleHwndMouseLookActive_ ? "true" : "false")
+           << ";captured=" << (aquariumSingleHwndMouseCaptured_ ? "true" : "false")
+           << ";available=" << (isAquariumSingleHwndViewportInputAvailable() ? "true" : "false")
+           << ";viewport=" << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.left))
+           << "," << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.top))
+           << "," << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.right))
+           << "," << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.bottom))
+           << ";rmb_down=" << aquariumViewportInputRmbDownCount_
+           << ";rmb_up=" << aquariumViewportInputRmbUpCount_
+           << ";begin=" << aquariumViewportInputBeginCount_
+           << ";end=" << aquariumViewportInputEndCount_
+           << ";cancel=" << aquariumViewportInputCancelCount_
+           << ";capture_lost=" << aquariumViewportInputCaptureLostCount_
+           << ";hit=" << aquariumViewportInputHitCount_
+           << ";miss=" << aquariumViewportInputMissCount_
+           << ";overlay_blocked=" << aquariumViewportInputOverlayBlockedCount_
+           << ";scene_moves=" << aquariumViewportInputSceneMoveCount_
+           << ";zero_moves=" << aquariumViewportInputZeroDeltaMoveCount_
+           << ";poll_begin=" << aquariumViewportInputPollBeginCount_
+           << ";invalidations=" << aquariumViewportInputInvalidationCount_
+           << ";last_xy=" << aceFormatDoubleUtf8(aquariumViewportInputLastX_) << "," << aceFormatDoubleUtf8(aquariumViewportInputLastY_)
+           << ";last_delta=" << aceFormatDoubleUtf8(aquariumViewportInputLastDeltaX_) << "," << aceFormatDoubleUtf8(aquariumViewportInputLastDeltaY_)
+           << ";route=" << aquariumViewportInputLastRoute_;
+        return os.str();
+    }
+
+    std::wstring AceShellUi::aquariumViewportInputDiagnosticsWide() const
+    {
+        return widen(aquariumViewportInputDiagnostics());
+    }
 
     void AceShellUi::renderAquariumDx12ViewportSurface(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled)
     {
@@ -2094,27 +3325,31 @@ namespace am::ui
 
         if (aquariumUseSingleHwndCompositeViewport_)
         {
+            // ACE-AQ3D12: main path is single-HWND composition. It deliberately
+            // avoids the child HWND/DX12 swapchain that flickers during resize.
             aquariumEmbeddedViewportRect_ = rect;
             aquariumPendingViewportRect_ = rect;
             aquariumPendingViewportValid_ = true;
-            aquariumEmbeddedViewportVisible_ = false;
+            aquariumEmbeddedViewportVisible_ = true;
             aquariumEmbeddedViewportSyncNeeded_ = false;
+            aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
             renderAquariumSlateCompositeViewport(ctx, rect, debugTruthEnabled);
-            aquariumEmbeddedViewportStatus_ = L"Single-HWND composited viewport active";
             return;
         }
 
         // ACE-AQ3D7: child_hwnd_sync_not_called_from_render_path. Render only
         // publishes the desired stable child HWND rect. Child HWND placement and
         // visibility sync happens later, outside WM_PAINT.
+        aquariumEmbeddedViewportRect_ = rect;
+        aquariumNativeViewportRect_ = computeAquariumNativeViewportRect(rect);
+
         const bool viewportRectChanged =
             !aquariumPendingViewportValid_ ||
-            std::fabs(aquariumPendingViewportRect_.left - rect.left) > 0.5f ||
-            std::fabs(aquariumPendingViewportRect_.top - rect.top) > 0.5f ||
-            std::fabs(aquariumPendingViewportRect_.right - rect.right) > 0.5f ||
-            std::fabs(aquariumPendingViewportRect_.bottom - rect.bottom) > 0.5f;
-        aquariumEmbeddedViewportRect_ = rect;
-        aquariumPendingViewportRect_ = rect;
+            std::fabs(aquariumPendingViewportRect_.left - aquariumNativeViewportRect_.left) > 0.5f ||
+            std::fabs(aquariumPendingViewportRect_.top - aquariumNativeViewportRect_.top) > 0.5f ||
+            std::fabs(aquariumPendingViewportRect_.right - aquariumNativeViewportRect_.right) > 0.5f ||
+            std::fabs(aquariumPendingViewportRect_.bottom - aquariumNativeViewportRect_.bottom) > 0.5f;
+        aquariumPendingViewportRect_ = aquariumNativeViewportRect_;
         aquariumPendingViewportValid_ = true;
         aquariumEmbeddedViewportSyncNeeded_ = aquariumEmbeddedViewportSyncNeeded_ || viewportRectChanged || !aquariumEmbeddedDx12Viewport_.IsVisible();
 
@@ -2125,21 +3360,24 @@ namespace am::ui
         if (!aquariumEmbeddedViewportVisible_ || !environmentOpen_ || !aquarium3DModeActive_ || right <= left + 64.0f || bottom <= top + 64.0f)
         {
             aquariumEmbeddedViewportVisible_ = false;
-            aquariumEmbeddedViewportStatus_ = L"DX12 Environment pending hidden";
+            aquariumEmbeddedViewportStatus_ = engineLogOverlayVisible_
+                ? L"DX12 child viewport hidden; parent-composited UI owns overlay"
+                : L"DX12 Environment pending hidden";
             return;
         }
 
-        // ACE-AQ3D9: during live resize the flip-model child HWND is hidden and
-        // the D2D parent paints a stable proxy in the same rect. This keeps the
-        // parent render target up to date while avoiding child swapchain flicker.
-        if (windowLiveResizeActive_ || aquariumViewportHiddenForLiveResize_)
+        // ACE-AQ3D11R5: do not swap to the old D2D resize proxy while resizing.
+        // The child DX12 viewport remains visible at the last stable rect until
+        // syncAquariumEmbeddedViewportWindow applies the final rect after resize.
+        if (windowLiveResizeActive_ ||
+            aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None ||
+            aquariumResizeQuarantineActive_)
         {
-            renderAquariumResizeProxyViewport(ctx, rect);
-            aquariumEmbeddedViewportStatus_ = L"Resizing viewport proxy active";
+            aquariumEmbeddedViewportStatus_ = L"Real DX12 3D resize freeze active";
             return;
         }
 
-        aquariumEmbeddedViewportStatus_ = L"DX12 Environment Mode active";
+        aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
     }
 
     void AceShellUi::renderAquariumResizeProxyViewport(D2DRenderContext& ctx, UiRect rect)
@@ -2151,40 +3389,118 @@ namespace am::ui
 
         ++liveResizeProxyPaintCount_;
 
-        D2DWidgetUtils::fillRect(ctx, rect, ctx.brushes.panelDeep);
-
-        if (ctx.target)
-        {
-            ctx.target->PushAxisAlignedClip(rect.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-
-            if (ctx.brushes.borderDim)
-            {
-                ctx.brushes.borderDim->SetOpacity(0.34f);
-                const float grid = 32.0f;
-                for (float x = rect.left; x <= rect.right; x += grid)
-                {
-                    ctx.target->DrawLine(D2D1::Point2F(x, rect.top), D2D1::Point2F(x, rect.bottom), ctx.brushes.borderDim, 1.0f);
-                }
-                for (float y = rect.top; y <= rect.bottom; y += grid)
-                {
-                    ctx.target->DrawLine(D2D1::Point2F(rect.left, y), D2D1::Point2F(rect.right, y), ctx.brushes.borderDim, 1.0f);
-                }
-                ctx.brushes.borderDim->SetOpacity(1.0f);
-            }
-
-            if (ctx.brushes.accent)
-            {
-                const float cx = rect.left + rect.width() * 0.5f;
-                const float cy = rect.top + rect.height() * 0.5f;
-                ctx.target->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), 7.0f, 7.0f), ctx.brushes.accent);
-                ctx.target->DrawLine(D2D1::Point2F(cx, cy), D2D1::Point2F(cx + 24.0f, cy - 12.0f), ctx.brushes.accent, 2.0f);
-            }
-
-            ctx.target->PopAxisAlignedClip();
-        }
+        // ACE-AQ3D11R2: during native top-level resize, hide the flip-model child
+        // swapchain and paint the old stable single-HWND D2D composite in the same
+        // rectangle. This is a resize-only proxy, not the main 3D path.
+        renderAquariumSlateCompositeViewport(ctx, rect, aquariumController_.DebugTruthEnabled());
 
         const UiRect label = makeUiRect(rect.left + 18.0f, rect.top + 16.0f, rect.right - 18.0f, rect.top + 44.0f);
-        D2DWidgetUtils::drawTextEx(ctx, L"Resizing viewport...", FontRole::Small, label, ctx.brushes.muted);
+        D2DWidgetUtils::drawTextEx(ctx, L"Legacy resize helper inactive", FontRole::Small, label, ctx.brushes.muted);
+    }
+
+    am::renderer::scene::AceAquariumGpuViewportOverlay AceShellUi::buildAquariumGpuViewportOverlay(UiRect viewportSurface, const ace::aquarium_ui::AceAquariumUiSnapshot& snapshot) const
+    {
+        am::renderer::scene::AceAquariumGpuViewportOverlay overlay{};
+        if (viewportSurface.empty())
+        {
+            return overlay;
+        }
+
+        auto local = [&](UiRect r) -> UiRect
+        {
+            return makeUiRect(
+                r.left - viewportSurface.left,
+                r.top - viewportSurface.top,
+                r.right - viewportSurface.left,
+                r.bottom - viewportSurface.top);
+        };
+
+        auto addRect = [&](UiRect r, float cr, float cg, float cb, float ca)
+        {
+            if (r.empty())
+            {
+                return;
+            }
+            overlay.rects.push_back({r.left, r.top, r.width(), r.height(), cr, cg, cb, ca});
+            overlay.enabled = true;
+        };
+
+        auto addText = [&](float x, float y, const std::string& text, float scale, float cr, float cg, float cb)
+        {
+            if (text.empty())
+            {
+                return;
+            }
+            overlay.texts.push_back({x, y, scale, cr, cg, cb, 1.0f, text});
+            overlay.enabled = true;
+        };
+
+        const UiRect logRect = engineLogOverlayVisible_ ? computeEngineLogOverlayRect(viewportSurface) : makeUiRect(0, 0, 0, 0);
+        const UiRect telemetryRect = computeAquariumTelemetryOverlayRect(viewportSurface, logRect);
+        const UiRect tl = local(telemetryRect);
+        if (!tl.empty())
+        {
+            addRect(tl, 0.020f, 0.085f, 0.125f, 0.94f);
+            addRect(makeUiRect(tl.left + 2.0f, tl.top + 2.0f, tl.right - 2.0f, tl.top + 4.0f), 0.02f, 0.72f, 0.90f, 1.0f);
+            addText(tl.left + 12.0f, tl.top + 12.0f, "AQUARIUM TELEMETRY", 2.0f, 0.62f, 0.96f, 1.0f);
+
+            auto bar = [&](float y, const char* name, double value, float r, float g, float b)
+            {
+                const float left = tl.left + 14.0f;
+                const float right = tl.right - 14.0f;
+                const float labelY = y;
+                addText(left, labelY, name, 1.65f, 0.72f, 0.96f, 1.0f);
+                const float barTop = labelY + 16.0f;
+                const float barW = right - left;
+                addRect(makeUiRect(left, barTop, right, barTop + 8.0f), 0.025f, 0.050f, 0.075f, 1.0f);
+                addRect(makeUiRect(left + 2.0f, barTop + 2.0f, left + 2.0f + std::max(0.0f, std::min(1.0f, static_cast<float>(value))) * (barW - 4.0f), barTop + 6.0f), r, g, b, 1.0f);
+            };
+            bar(tl.top + 34.0f, "HYDRATION", snapshot.body.hydration, 0.00f, 0.88f, 0.92f);
+            bar(tl.top + 58.0f, "NUTRITION", snapshot.body.nutrition, 0.20f, 0.56f, 1.00f);
+            bar(tl.top + 82.0f, "INTEGRITY", snapshot.body.integrity, 1.00f, 0.60f, 0.18f);
+        }
+
+        if (engineLogOverlayVisible_)
+        {
+            const UiRect lg = local(logRect);
+            if (!lg.empty())
+            {
+                addRect(lg, 0.012f, 0.042f, 0.070f, 0.96f);
+                addRect(makeUiRect(lg.left, lg.top, lg.right, lg.top + 3.0f), 0.02f, 0.44f, 0.95f, 1.0f);
+                addText(lg.left + 12.0f, lg.top + 14.0f, "ACE ENGINE LOG CONSOLE", 2.1f, 0.72f, 0.96f, 1.0f);
+                addText(lg.right - 360.0f, lg.top + 16.0f, "ENTER=RUN  PGUP/PGDN=SCROLL  ESC=CLOSE", 1.55f, 0.30f, 0.64f, 0.84f);
+
+                const float listTop = lg.top + 48.0f;
+                const float inputH = 30.0f;
+                const float listBottom = lg.bottom - inputH - 18.0f;
+                addRect(makeUiRect(lg.left + 12.0f, listTop, lg.right - 12.0f, listBottom), 0.020f, 0.040f, 0.065f, 1.0f);
+                addRect(makeUiRect(lg.left + 12.0f, lg.bottom - inputH - 8.0f, lg.right - 12.0f, lg.bottom - 8.0f), 0.015f, 0.035f, 0.055f, 1.0f);
+
+                const std::size_t maxLines = static_cast<std::size_t>(std::max(1.0f, (listBottom - listTop - 12.0f) / 16.0f));
+                const std::size_t count = std::min(maxLines, engineLogOverlayLines_.size());
+                const std::size_t start = engineLogOverlayLines_.size() - count;
+                float y = listTop + 10.0f;
+                for (std::size_t i = start; i < engineLogOverlayLines_.size(); ++i)
+                {
+                    std::string line = aceNarrowLossy(engineLogOverlayLines_[i]);
+                    if (line.size() > 120)
+                    {
+                        line.resize(120);
+                    }
+                    addText(lg.left + 22.0f, y, line, 1.55f, 0.18f, 0.82f, 1.0f);
+                    y += 16.0f;
+                }
+
+                std::string inputText = "> " + aceNarrowLossy(engineLogOverlayInput_.text());
+                if (inputText.size() > 118)
+                {
+                    inputText = inputText.substr(inputText.size() - 118);
+                }
+                addText(lg.left + 22.0f, lg.bottom - inputH, inputText, 1.70f, 0.80f, 1.0f, 1.0f);
+            }
+        }
+
+        return overlay;
     }
 
     void AceShellUi::renderAquariumSlateCompositeViewport(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled)
@@ -2232,17 +3548,9 @@ namespace am::ui
             }
         };
 
-        auto line = [&](float ax, float ay, float bx, float by, float thickness, float cr, float cg, float cb, float ca)
-        {
-            auto brush = makeBrush(cr, cg, cb, ca);
-            if (brush)
-            {
-                ctx.target->DrawLine(D2D1::Point2F(ax, ay), D2D1::Point2F(bx, by), brush.Get(), thickness);
-            }
-        };
 
-        fill(rect, 0.008f, 0.018f, 0.040f, 1.0f);
-        fill(makeUiRect(rect.left, rect.top, rect.right, std::min(rect.bottom, rect.top + 28.0f)),
+        fill(rect, 0.006f, 0.014f, 0.032f, 1.0f);
+        fill(makeUiRect(rect.left, rect.top, rect.right, std::min(rect.bottom, rect.top + 30.0f)),
              debugTruthEnabled ? 0.52f : 0.020f,
              debugTruthEnabled ? 0.20f : 0.060f,
              debugTruthEnabled ? 0.06f : 0.110f,
@@ -2257,96 +3565,167 @@ namespace am::ui
 
         const float surfaceW = std::max(1.0f, rect.width());
         const float surfaceH = std::max(1.0f, rect.height());
+        const float aspect = surfaceW / surfaceH;
+        const auto viewProjection = aquariumSingleHwndCamera_.ViewProjectionMatrix(aspect);
+        const auto requestedW = static_cast<am::renderer::rhi::U32>(std::max(64.0f, std::round(surfaceW)));
+        const auto requestedH = static_cast<am::renderer::rhi::U32>(std::max(64.0f, std::round(surfaceH)));
+        const auto viewportCacheKey = makeAquariumViewportCacheKey(requestedW, requestedH, debugTruthEnabled);
+
+        // ACE-VTBRIDGE5: CPU readback/cache fallback is intentionally disabled for the
+        // D2D DeviceContext path. The viewport must either draw as a GPU-sampled
+        // frame element or report a fatal bridge error. This keeps the frame graph
+        // honest and avoids retained-content/readback ghosts.
+        const auto acePerfBuildStart = std::chrono::steady_clock::now();
         const auto primitives = aquariumSceneAdapter_.BuildPrimitives(aquariumController_, debugTruthEnabled);
+        enginePerfStats_.SetLastAquariumBuildMs(aceElapsedMs(acePerfBuildStart, std::chrono::steady_clock::now()));
 
-        float maxX = 1.0f;
-        float maxY = 1.0f;
-        for (const auto& primitive : primitives)
+        // ACE-RHI7/RHI8: first try the real 3D GPU path. DX12 renders
+        // depth-tested Aquarium mesh geometry into offscreen SceneColor/SceneDepth.
+        // RHI8 then presents SceneColor through DirectComposition zero-copy when
+        // possible; readback/D2D bitmap remains a safe fallback instead of a black
+        // rectangle with an attitude problem.
         {
-            maxX = std::max(maxX, primitive.X + std::max(0.0f, primitive.SizeX));
-            maxY = std::max(maxY, primitive.Y + std::max(0.0f, primitive.SizeY));
-        }
-
-        auto camera = aquariumCamera_;
-        camera.Zoom = std::clamp(
-            std::min(
-                surfaceW / std::max(maxX + maxY + 2.0f, 1.0f),
-                (surfaceH - 44.0f) / std::max((maxX + maxY) * 0.62f + 3.0f, 1.0f)
-            ) * 2.86f,
-            26.0f,
-            108.0f);
-        camera.OriginY = std::max(28.0f, surfaceH * 0.105f);
-
-        const auto model = aquariumViewport_.BuildViewportModel(primitives, camera, surfaceW, surfaceH);
-        const float tileW = std::clamp(camera.Zoom * 0.86f, 28.0f, 76.0f);
-        const float tileH = std::clamp(camera.Zoom * 0.42f, 14.0f, 38.0f);
-        const float blockW = std::clamp(camera.Zoom * 0.72f, 28.0f, 70.0f);
-        const float blockH = std::clamp(camera.Zoom * 1.04f, 36.0f, 96.0f);
-        const float agentW = std::clamp(camera.Zoom * 0.92f, 40.0f, 86.0f);
-        const float agentH = std::clamp(camera.Zoom * 1.22f, 52.0f, 116.0f);
-
-        auto ox = [&](float x) { return rect.left + x; };
-        auto oy = [&](float y) { return rect.top + y; };
-
-        for (const auto& primitive : model)
-        {
-            const float pr = primitive.R;
-            const float pg = primitive.G;
-            const float pb = primitive.Bc;
-            const float pa = primitive.Aalpha;
-            const float ax = ox(primitive.A.X);
-            const float ay = oy(primitive.A.Y);
-            const float bx = ox(primitive.B.X);
-            const float by = oy(primitive.B.Y);
-
-            switch (primitive.Kind)
+            if (!aquariumGpuViewportRenderer_)
             {
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::GridLine:
-                line(ax, ay, bx, by, 1.0f, pr, pg, pb, pa);
-                break;
-
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::Tile:
-                fill(aceRectAround(ax, ay, tileW, tileH), pr, pg, pb, pa);
-                break;
-
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::Block:
-                fill(aceRectAround(ax, ay, blockW, blockH), pr, pg, pb, pa);
-                fill(makeUiRect(ax - blockW * 0.35f, ay - blockH * 0.56f, ax + blockW * 0.35f, ay - blockH * 0.42f),
-                     pr + 0.12f, pg + 0.12f, pb + 0.12f, pa);
-                break;
-
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::Agent:
-                fill(aceRectAround(ax, ay, agentW * 1.42f, agentH * 1.16f), 0.08f, 0.50f, 0.72f, 0.22f);
-                fill(aceRectAround(ax, ay, agentW, agentH), 0.10f, 0.95f, 1.0f, 0.92f);
-                break;
-
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::DirectionArrow:
-                fill(aceRectBetween(ax, ay, bx, by, std::max(4.0f, camera.Zoom * 0.08f)), 1.0f, 0.90f, 0.20f, 0.92f);
-                fill(aceRectAround(bx, by, std::max(8.0f, camera.Zoom * 0.16f), std::max(8.0f, camera.Zoom * 0.16f)), 1.0f, 0.90f, 0.20f, 0.92f);
-                break;
-
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::Highlight:
-                fill(aceRectAround(ax, ay, tileW * 1.16f, tileH * 1.55f), 1.0f, 0.82f, 0.20f, 0.34f);
-                break;
-
-            case ace::aquarium_render::AceAqRenderPrimitiveKind::DebugLabel:
-                if (debugTruthEnabled)
-                {
-                    fill(aceRectAround(ax, ay, 18.0f, 6.0f), 1.0f, 0.55f, 0.18f, 0.90f);
-                }
-                break;
+                aquariumGpuViewportRenderer_ = std::make_unique<am::renderer::scene::AceAquariumGpuViewportRenderer>();
             }
+
+            std::array<float, 16> wvp{};
+            for (std::size_t i = 0; i < wvp.size(); ++i)
+            {
+                wvp[i] = viewProjection.m[i];
+            }
+            aquariumGpuViewportRenderer_->setWorldToClipMatrix(wvp);
+
+            am::renderer::scene::AceAquariumGpuViewportSnapshot gpuSnapshot{};
+            std::string gpuError;
+            const bool useDirectComposition = shouldUseDirectCompositionForAquariumViewport();
+            const bool transitioningFromDirectComposition = !useDirectComposition && aquariumDirectCompositionActive_;
+            if (!useDirectComposition && (isViewportLocalOverlayActive() || transitioningFromDirectComposition))
+            {
+                // ACE-UI12: mirror Slate/SViewport layering without the flicker tax.
+                // When a viewport-local UI layer needs to be above the scene, render
+                // the scene as a parent-composited viewport element. If a DComp visual
+                // is already alive, keep it until the new parent frame is submitted,
+                // then tear it down after EndDraw. Human eyes dislike one-frame black
+                // holes, a shocking discovery in UI engineering.
+                requestParentCompositedViewportHold(12u, L"parent-layered-ui");
+            }
+
+            const auto acePerfRhiStart = std::chrono::steady_clock::now();
+            auto renderGpuViewport = [&](bool preferTextureBridge) -> bool
+            {
+                return aquariumGpuViewportRenderer_->render(
+                    primitives,
+                    requestedW,
+                    requestedH,
+                    debugTruthEnabled,
+                    &gpuSnapshot,
+                    &gpuError,
+                    nullptr,
+                    useDirectComposition ? parent_ : nullptr,
+                    rect.left,
+                    rect.top,
+                    preferTextureBridge && !useDirectComposition);
+            };
+            auto failD2DDeviceContextBridge = [&](const std::string& rawError)
+            {
+                const std::string errorText = rawError.empty() ?
+                    "D2D DeviceContext viewport bridge failed before producing a diagnostic." :
+                    rawError;
+                setAquariumD2DBridgeFatalError(errorText);
+                aquariumD2DBridgeDisabled_ = true;
+                resetAquariumDirectCompositionIfActive();
+                aquariumActiveRenderPath_ = AceEngineRenderPath::FailedD2DDeviceContext;
+                enginePerfStats_.SetLastFallbackPath(aquariumActiveRenderPath_);
+                enginePerfStats_.SetLastRhiRenderMs(aceElapsedMs(acePerfRhiStart, std::chrono::steady_clock::now()));
+                enginePerfStats_.SetLastPresentOrCompositeMs(0.0);
+                ctx.target->PopAxisAlignedClip();
+
+                const UiRect panel = rect.inset(18.0f);
+                D2DWidgetUtils::fillRounded(ctx, panel, 14.0f, ctx.brushes.panelDeep, ctx.brushes.danger, 1.2f);
+                D2DWidgetUtils::drawTextEx(ctx,
+                    L"DX12/D2D DeviceContext bridge failed.",
+                    FontRole::BodyStrong,
+                    makeUiRect(panel.left + 18.0f, panel.top + 16.0f, panel.right - 18.0f, panel.top + 44.0f),
+                    ctx.brushes.danger,
+                    DWRITE_TEXT_ALIGNMENT_LEADING);
+                D2DWidgetUtils::drawTextEx(ctx,
+                    std::wstring(L"Step: ") + widen(aquariumD2DBridgeFatalStep_),
+                    FontRole::Small,
+                    makeUiRect(panel.left + 18.0f, panel.top + 52.0f, panel.right - 18.0f, panel.top + 76.0f),
+                    ctx.brushes.text,
+                    DWRITE_TEXT_ALIGNMENT_LEADING);
+                D2DWidgetUtils::drawTextEx(ctx,
+                    std::wstring(L"HRESULT: ") + widen(aquariumD2DBridgeFatalHresult_.empty() ? aquariumD2DBridgeLastError_ : aquariumD2DBridgeFatalHresult_),
+                    FontRole::Small,
+                    makeUiRect(panel.left + 18.0f, panel.top + 80.0f, panel.right - 18.0f, panel.top + 104.0f),
+                    ctx.brushes.muted,
+                    DWRITE_TEXT_ALIGNMENT_LEADING);
+                aquariumEmbeddedViewportStatus_ = L"DX12/D2D DeviceContext bridge failed; no legacy/readback fallback.";
+            };
+
+            bool aceGpuRenderOk = renderGpuViewport(true);
+            if (!aceGpuRenderOk)
+            {
+                failD2DDeviceContextBridge(gpuError.empty() ? "DX12 render for D2D DeviceContext bridge failed." : gpuError);
+                return;
+            }
+
+            const bool attemptedD2DTextureBridge = gpuSnapshot.valid && gpuSnapshot.d2dTextureBridgeReady;
+            if (!attemptedD2DTextureBridge)
+            {
+                const std::string status = gpuSnapshot.status.empty() ?
+                    "DX12 renderer did not expose a GPU texture snapshot for the D2D DeviceContext bridge." :
+                    gpuSnapshot.status;
+                failD2DDeviceContextBridge(status);
+                return;
+            }
+
+            const auto acePerfCompositeStart = std::chrono::steady_clock::now();
+            const bool d2dTextureBridgeDrawOk = drawAquariumGpuTextureWithD2DDeviceContext(ctx, rect, gpuSnapshot, viewportCacheKey, &gpuError);
+            if (!d2dTextureBridgeDrawOk)
+            {
+                failD2DDeviceContextBridge(gpuError.empty() ? aquariumD2DBridgeLastError_ : gpuError);
+                return;
+            }
+
+            if (transitioningFromDirectComposition)
+            {
+                aquariumResetDirectCompositionAfterPaint_ = true;
+            }
+            else
+            {
+                aquariumDirectCompositionActive_ = false;
+            }
+            aquariumActiveRenderPath_ = AceEngineRenderPath::Dx12D2DTextureBridge;
+            enginePerfStats_.SetLastFallbackPath(aquariumActiveRenderPath_);
+            enginePerfStats_.SetLastRhiRenderMs(aceElapsedMs(acePerfRhiStart, std::chrono::steady_clock::now()));
+            enginePerfStats_.SetLastPresentOrCompositeMs(aceElapsedMs(acePerfCompositeStart, std::chrono::steady_clock::now()));
+            ctx.target->PopAxisAlignedClip();
+
+            const auto stats = aquariumGpuViewportRenderer_->stats();
+            std::wstringstream labelText;
+            labelText << L"GPU 3D Environment | D2D DeviceContext GPU texture bridge "
+                      << gpuSnapshot.extent.width << L"x" << gpuSnapshot.extent.height
+                      << L" | verts " << stats.lastVertexCount
+                      << L" | frame " << stats.framesRendered;
+            const UiRect label = makeUiRect(rect.left + 16.0f, rect.top + 8.0f, rect.right - 16.0f, rect.top + 30.0f);
+            D2DWidgetUtils::drawTextEx(ctx,
+                debugTruthEnabled ? L"DEBUG TRUTH - NOT AGENT INPUT | D2D DeviceContext GPU texture bridge" : labelText.str(),
+                FontRole::Small,
+                label,
+                debugTruthEnabled ? ctx.brushes.accentWarm : ctx.brushes.muted,
+                DWRITE_TEXT_ALIGNMENT_LEADING);
+            aquariumEmbeddedViewportStatus_ = L"GPU 3D Environment active | D2D DeviceContext/D3D11On12 DXGI surface bridge; no CPU readback this frame";
+            return;
         }
 
-        ctx.target->PopAxisAlignedClip();
-
-        const UiRect label = makeUiRect(rect.left + 16.0f, rect.top + 8.0f, rect.right - 16.0f, rect.top + 30.0f);
-        D2DWidgetUtils::drawTextEx(ctx,
-            debugTruthEnabled ? L"DEBUG TRUTH - NOT AGENT INPUT | Single-HWND composite viewport" : L"Single-HWND composite viewport",
-            FontRole::Small,
-            label,
-            debugTruthEnabled ? ctx.brushes.accentWarm : ctx.brushes.muted,
-            DWRITE_TEXT_ALIGNMENT_LEADING);
+        // ACE-VTBRIDGE5: no software single-HWND fallback after the GPU/D2D
+        // DeviceContext bridge succeeds or fails. Leaving the old immediate-mode
+        // projection code below the guaranteed bridge return produced MSVC C4702
+        // storms and, worse, implied that stale retained pixels were still a
+        // supported frame path. They are not.
     }
 
     void AceShellUi::syncAquariumEmbeddedViewportWindow()
@@ -2369,13 +3748,11 @@ namespace am::ui
         // ACE-AQ3D7: stable child HWND sync. This is the only place that may
         // update embedded DX12 child visibility/placement; hover/click paints
         // update dirty D2D rects only and do not resize/recreate the child.
-        if (windowLiveResizeActive_)
+        if (windowLiveResizeActive_ || aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None || aquariumResizeQuarantineActive_)
         {
-            // ACE-AQ3D8: live_resize_defers_child_hwnd_sync and
-            // sync_viewport_window_guarded_during_live_resize. Do not Show/Hide,
-            // SetWindowPos, MoveWindow, or indirectly resize DX12 while the user
-            // is dragging the top-level window border. The final rect is applied
-            // once after WM_EXITSIZEMOVE.
+            // ACE-AQ3D11R3: sync is guarded during native resize, side-panel
+            // resize and the post-resize quarantine delay. Do not Show/Move/resize
+            // the child HWND until the parent layout has been stable briefly.
             aquariumEmbeddedViewportSyncNeeded_ = true;
             return;
         }
@@ -2419,7 +3796,7 @@ namespace am::ui
         ++childSyncCount_;
         if (!aquariumEmbeddedDx12Viewport_.Show(parent_, x, y, w, h, &viewportError))
         {
-            aquariumEmbeddedViewportStatus_ = L"DX12 Environment renderer unavailable; check logs.";
+            aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D renderer unavailable; check logs.";
             aquariumEmbeddedDx12Viewport_.Hide();
             return;
         }
@@ -2431,7 +3808,7 @@ namespace am::ui
         aquariumViewportHiddenForLiveResize_ = false;
         aquariumViewportWasVisibleBeforeLiveResize_ = false;
         aquariumEmbeddedViewportSyncNeeded_ = false;
-        aquariumEmbeddedViewportStatus_ = L"DX12 Environment Mode active";
+        aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
     }
 
     void AceShellUi::renderAquariumButton(D2DRenderContext& ctx, UiRect rect, const std::wstring& label, bool active)
@@ -2728,6 +4105,7 @@ namespace am::ui
     {
         AquariumScrollPanel* panels[] =
         {
+            &engineLogOverlayScroll_,
             &aquariumLogScroll_,
             &aquarium3DLogsScroll_,
             &aquarium3DDetailsScroll_,
@@ -2837,6 +4215,15 @@ namespace am::ui
         aquariumPanelResizeStartX_ = x;
         aquariumPanelResizeStartY_ = y;
         aquariumPanelResizeStartState_ = aquarium3DPanelState_;
+
+        // ACE-AQ3D11R5: side-panel resize freezes the child DX12 viewport at
+        // its last stable rect. No D2D proxy swap, no hide/show loop.
+        aquariumResizeQuarantineActive_ = true;
+        aquariumResizeQuarantineDelaySeconds_ = 0.18f;
+        ++aquariumResizeQuarantineEnterCount_;
+        aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
+        aquariumEmbeddedViewportStatus_ = L"Real DX12 3D resize freeze active";
+        aquariumEmbeddedViewportSyncNeeded_ = true;
         return true;
     }
 
@@ -2852,6 +4239,10 @@ namespace am::ui
             const float requestedWidth = aquariumPanelResizeStartState_.detailsWidth + (x - aquariumPanelResizeStartX_);
             const float requestedHeight = aquariumPanelResizeStartState_.detailsHeight + (y - aquariumPanelResizeStartY_);
             environment3DMode_.ResizeLeftPanel(aquarium3DPanelState_, requestedWidth, requestedHeight, static_cast<float>(width_), static_cast<float>(height_));
+            aquariumResizeQuarantineActive_ = true;
+            aquariumResizeQuarantineDelaySeconds_ = 0.18f;
+            aquariumEmbeddedViewportSyncNeeded_ = true;
+            invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
             return true;
         }
 
@@ -2860,6 +4251,10 @@ namespace am::ui
             const float requestedWidth = aquariumPanelResizeStartState_.logsWidth - (x - aquariumPanelResizeStartX_);
             const float requestedHeight = aquariumPanelResizeStartState_.logsHeight + (y - aquariumPanelResizeStartY_);
             environment3DMode_.ResizeRightPanel(aquarium3DPanelState_, requestedWidth, requestedHeight, static_cast<float>(width_), static_cast<float>(height_));
+            aquariumResizeQuarantineActive_ = true;
+            aquariumResizeQuarantineDelaySeconds_ = 0.18f;
+            aquariumEmbeddedViewportSyncNeeded_ = true;
+            invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
             return true;
         }
 
@@ -2871,6 +4266,13 @@ namespace am::ui
         aquariumPanelResizeTarget_ = AquariumPanelResizeTarget::None;
         aquariumPanelResizeStartX_ = 0.0f;
         aquariumPanelResizeStartY_ = 0.0f;
+        if (environmentOpen_ && aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_)
+        {
+            aquariumResizeQuarantineActive_ = true;
+            aquariumResizeQuarantineDelaySeconds_ = 0.18f;
+            aquariumEmbeddedViewportSyncNeeded_ = true;
+            invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
+        }
     }
 
     bool AceShellUi::handleAquariumPanelClick(float x, float y)
@@ -2945,19 +4347,23 @@ namespace am::ui
         if (aquariumOpen3DRect_.contains(x, y))
         {
             aquarium3DModeActive_ = true;
+            aquariumUseSingleHwndCompositeViewport_ = true;
             aquariumEmbeddedViewportVisible_ = true;
+            aquariumEmbeddedDx12Viewport_.Hide();
             aquariumContentScroll_.offset = 0.0f;
-            aquariumEmbeddedViewportStatus_ = L"DX12 Environment Mode active";
-            showToast(L"3D Environment", L"DX12 environment mode active.", D2DToastKind::Success);
+            aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
+            showToast(L"3D Environment", L"Single-HWND 3D viewport active.", D2DToastKind::Success);
             return true;
         }
 
         if (aquariumCameraResetRect_.contains(x, y))
         {
+            aquariumSingleHwndCamera_.Reset();
             aquariumEmbeddedViewportVisible_ = true;
             aquariumContentScroll_.offset = 0.0f;
-            aquariumEmbeddedViewportStatus_ = L"DX12 Environment Mode active";
+            aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D active | RMB look | WASD move | Q/E vertical";
             showToast(L"Camera", L"Environment camera reset.", D2DToastKind::Info);
+            invalidateRect(aquariumEmbeddedViewportRect_.empty() ? mainRect_ : aquariumEmbeddedViewportRect_);
             return true;
         }
 
@@ -3244,7 +4650,12 @@ namespace am::ui
         // child-window z-order and the surface is not recreated during idle.
         D2DWidgetUtils::fillRounded(ctx, viewportBackground, 0.0f, ctx.brushes.panelDeep);
         renderAquariumDx12ViewportSurface(ctx, viewportSurface, snapshot.debugTruthEnabled);
-        aquariumTelemetryWidgets_.RenderOverlay(ctx, viewportSurface, snapshot);
+
+        // ACE-UI12: the viewport HUD is a stable layer above the scene but below
+        // chrome/popups. It computes its own safe rect instead of being glued to
+        // the bottom-left corner and then acting shocked when the log console
+        // docks there too.
+        renderAquariumViewportHudLayer(ctx, viewportSurface, snapshot);
 
         D2DGlassMaterial topGlass;
         topGlass.radius = 0.0f;
@@ -3449,6 +4860,567 @@ namespace am::ui
         }
     }
 
+
+    bool AceShellUi::executeEngineStatsCommand(const std::wstring& commandId)
+    {
+        const std::wstring id = aceTrimCommand(commandId);
+        std::string logLine;
+
+        if (id == L"stat_coords")
+        {
+            appendEngineCommandOutput(L"STAT_COORDS", formatStatCoords(&logLine), "STAT_COORDS", logLine);
+            statusBar_.setText(L"Command executed: stat_coords");
+            return true;
+        }
+        if (id == L"stat_rhi")
+        {
+            appendEngineCommandOutput(L"STAT_RHI", formatStatRhi(&logLine), "STAT_RHI", logLine);
+            statusBar_.setText(L"Command executed: stat_rhi");
+            return true;
+        }
+        if (id == L"stat_fps")
+        {
+            appendEngineCommandOutput(L"STAT_FPS", formatStatFps(&logLine), "STAT_FPS", logLine);
+            statusBar_.setText(L"Command executed: stat_fps");
+            return true;
+        }
+        if (id == L"stat_ui")
+        {
+            appendEngineCommandOutput(L"STAT_UI", formatStatUi(&logLine), "STAT_UI", logLine);
+            statusBar_.setText(L"Command executed: stat_ui");
+            return true;
+        }
+        if (id == L"stat_help" || id == L"help")
+        {
+            const std::wstring help =
+                L"Engine stats commands: stat_coords, stat_rhi, stat_fps, stat_ui, stat_help/help, clear_log. "
+                L"Slash form also works: /stat_rhi. These are local-only and are not submitted to the backend.";
+            appendEngineCommandOutput(L"STAT_HELP", help, "STAT_HELP", "commands=stat_coords,stat_rhi,stat_fps,stat_ui,stat_help,clear_log slash=enabled backend_submit=false");
+            statusBar_.setText(L"Command executed: stat_help");
+            return true;
+        }
+        if (id == L"clear_log")
+        {
+            std::wstring warning;
+            bool ok = true;
+            try
+            {
+                const auto path = AceEngineLogPath();
+                std::filesystem::create_directories(path.parent_path());
+                std::ofstream file(path, std::ios::trunc);
+                ok = static_cast<bool>(file);
+                if (!ok)
+                {
+                    warning = L"Could not truncate Build/Logs/ace_engine.log.";
+                }
+            }
+            catch (...)
+            {
+                ok = false;
+                warning = L"Could not clear Build/Logs/ace_engine.log.";
+            }
+
+            const std::wstring body = ok ? L"Build/Logs/ace_engine.log cleared." : warning;
+            messageList_.addMessage(makeMessage(ok ? L"Tool" : L"Warning", body, false, false, ok ? ChatMessageKind::Tool : ChatMessageKind::Warning, L"engine log"));
+            if (ok)
+            {
+                AceEngineAppendLog("CLEAR_LOG", "log_cleared=true", nullptr);
+            }
+            if (engineLogOverlayVisible_)
+            {
+                refreshEngineLogOverlayLines();
+            }
+            statusBar_.setText(ok ? L"Command executed: clear_log" : L"clear_log failed");
+            return true;
+        }
+
+        return false;
+    }
+
+    AceEngineStatsSnapshot AceShellUi::buildEngineStatsSnapshot() const
+    {
+        AceEngineStatsSnapshot snapshot{};
+        snapshot.activeRenderPath = aquariumActiveRenderPath_;
+        snapshot.backend = aquariumGpuViewportRenderer_ ? L"DX12" : L"unknown";
+        snapshot.adapterName = L"n/a";
+        if (aquariumGpuViewportRenderer_)
+        {
+            snapshot.viewportStats = aquariumGpuViewportRenderer_->stats();
+            snapshot.rhiStats = aquariumGpuViewportRenderer_->gpuStats();
+            snapshot.viewportTexture = aquariumGpuViewportRenderer_->viewportTextureResource();
+            snapshot.viewportBridge = aquariumGpuViewportRenderer_->viewportBridgeStatus(aquariumActiveRenderPath_ == AceEngineRenderPath::Dx12D2DTextureBridge);
+            if (aquariumActiveRenderPath_ == AceEngineRenderPath::Dx12D2DTextureBridge && aquariumBridgeUsesSharedIntermediate_)
+            {
+                snapshot.viewportBridge.requiredInterop = am::renderer::rhi::AceViewportGpuInteropKind::D3D11On12SharedD3D11Texture;
+                snapshot.viewportBridge.fallbackReason = aquariumD2DBridgeSurfaceDiagnostics_.empty() ? "none" : aquariumD2DBridgeSurfaceDiagnostics_;
+            }
+            if (aquariumActiveRenderPath_ == AceEngineRenderPath::FailedD2DDeviceContext && !aquariumD2DBridgeLastError_.empty())
+            {
+                snapshot.viewportBridge = am::renderer::rhi::MakeAceViewportD2DDeviceContextFailure(
+                    snapshot.viewportTexture,
+                    aquariumD2DBridgeFatalStep_.empty() ? aquariumD2DBridgeLastError_ : aquariumD2DBridgeFatalStep_,
+                    aquariumD2DBridgeFatalHresult_.empty() ? aquariumD2DBridgeLastError_ : aquariumD2DBridgeFatalHresult_);
+            }
+            else if (aquariumActiveRenderPath_ != AceEngineRenderPath::Dx12D2DTextureBridge && !aquariumD2DBridgeLastError_.empty())
+            {
+                snapshot.viewportBridge.fallbackReason = aquariumD2DBridgeLastError_;
+            }
+        }
+        return snapshot;
+    }
+
+    std::wstring AceShellUi::formatStatCoords(std::string* logLine) const
+    {
+        const auto pos = aquariumSingleHwndCamera_.Position();
+        const auto forward = aquariumSingleHwndCamera_.Forward();
+        const auto right = aquariumSingleHwndCamera_.Right();
+        const auto up = aquariumSingleHwndCamera_.Up();
+        const auto& world = aquariumController_.Environment().World();
+        const auto agent = world.AgentPosition();
+        const auto dir = world.AgentDirection();
+        const std::wstring path = AceEngineRenderPathToWide(aquariumActiveRenderPath_);
+        const std::wstring scenario = aquariumControllerReady_ ? widen(aquariumController_.CurrentScenarioName()) : L"n/a";
+        const std::wstring planner = aquariumControllerReady_ ? widen(aquariumController_.CurrentPlannerName()) : L"n/a";
+
+        std::wstringstream ss;
+        ss << L"path=" << path
+           << L" | camera_pos=" << aceVec3Wide(pos)
+           << L" yaw=" << aceFormatDouble(aquariumSingleHwndCamera_.Yaw(), 3)
+           << L" pitch=" << aceFormatDouble(aquariumSingleHwndCamera_.Pitch(), 3)
+           << L" | forward=" << aceVec3Wide(forward)
+           << L" right=" << aceVec3Wide(right)
+           << L" up=" << aceVec3Wide(up)
+           << L" | speed=" << aceFormatDouble(aquariumSingleHwndCamera_.MoveSpeed(), 2)
+           << L" | viewport=" << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.width())) << L"x" << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.height()))
+           << L" | scenario=" << scenario
+           << L" planner=" << planner
+           << L" step=" << (aquariumControllerReady_ ? std::to_wstring(aquariumController_.StepIndex()) : L"n/a")
+           << L" | agent=(" << agent.x << L", " << agent.y << L") dir=" << widen(ace::aquarium::ToString(dir));
+
+        if (logLine)
+        {
+            std::ostringstream os;
+            os << "path=" << AceEngineRenderPathToUtf8(aquariumActiveRenderPath_)
+               << " camera=" << aceVec3Utf8(pos)
+               << " yaw=" << aceFormatDoubleUtf8(aquariumSingleHwndCamera_.Yaw(), 3)
+               << " pitch=" << aceFormatDoubleUtf8(aquariumSingleHwndCamera_.Pitch(), 3)
+               << " viewport=" << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.width())) << "x" << static_cast<int>(std::round(aquariumEmbeddedViewportRect_.height()))
+               << " scenario=" << aquariumController_.CurrentScenarioName()
+               << " planner=" << aquariumController_.CurrentPlannerName()
+               << " step=" << aquariumController_.StepIndex()
+               << " agent=(" << agent.x << "," << agent.y << ") dir=" << ace::aquarium::ToString(dir);
+            *logLine = os.str();
+        }
+        return ss.str();
+    }
+
+    std::wstring AceShellUi::formatStatRhi(std::string* logLine) const
+    {
+        const auto snapshot = buildEngineStatsSnapshot();
+        const auto& v = snapshot.viewportStats;
+        const auto& r = snapshot.rhiStats;
+        const bool readbackActive = !(snapshot.activeRenderPath == AceEngineRenderPath::Dx12GpuComposited ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::Dx12ZeroCopy ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::Dx12CachedReadback ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::Dx12D2DTextureBridge ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::FailedD2DDeviceContext);
+
+        std::wstringstream ss;
+        ss << L"[STAT_RHI]\n"
+           << L"  path: " << AceEngineRenderPathToWide(snapshot.activeRenderPath) << L"\n"
+           << L"  backend: " << snapshot.backend << L"\n"
+           << L"  adapter: " << snapshot.adapterName << L"\n"
+           << L"  viewport_mode: " << AceEngineRenderPathToWide(snapshot.activeRenderPath) << L"\n"
+           << L"  ui_layer: D2D_RETAINED_OVERLAY\n"
+           << L"  quality: preserved\n"
+           << L"  gpu_text_overlay: false\n"
+           << L"  viewport_texture_resource: " << widen(am::renderer::rhi::AceViewportTextureResourceKindToString(snapshot.viewportTexture.kind)) << L"\n"
+           << L"  viewport_texture_bridge: " << widen(am::renderer::rhi::AceViewportTextureBridgeModeToString(snapshot.viewportBridge.mode)) << L"\n"
+           << L"  viewport_ui_renderer: " << widen(am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.uiRenderer)) << L"\n"
+           << L"  viewport_required_ui_renderer: " << widen(am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.requiredUiRenderer)) << L"\n"
+           << L"  viewport_required_interop: " << widen(am::renderer::rhi::AceViewportGpuInteropKindToString(snapshot.viewportBridge.requiredInterop)) << L"\n"
+           << L"  viewport_bridge_fallback_reason: " << widen(snapshot.viewportBridge.fallbackReason) << L"\n"
+           << L"  legacy_fallback: " << (snapshot.viewportBridge.legacyFallbackUsed ? L"true" : L"false") << L"\n"
+           << L"  fatal_bridge_step: " << widen(snapshot.viewportBridge.fatalBridgeStep.empty() ? std::string("none") : snapshot.viewportBridge.fatalBridgeStep) << L"\n"
+           << L"  fatal_bridge_hresult: " << widen(snapshot.viewportBridge.fatalBridgeHresult.empty() ? std::string("none") : snapshot.viewportBridge.fatalBridgeHresult) << L"\n"
+           << L"  readback_active: " << (readbackActive ? L"true" : L"false") << L"\n"
+           << L"  viewportCacheHits: " << aquariumViewportCacheHitCount_ << L"\n"
+           << L"  viewportCacheMisses: " << aquariumViewportCacheMissCount_ << L"\n"
+           << L"  zeroCopyFrames: " << r.zeroCopyFrames << L" / " << v.zeroCopyFrames << L"\n"
+           << L"  readbackFrames: " << r.readbackFrames << L" / " << v.readbackFrames << L"\n"
+           << L"  combinedReadbackFrames: " << r.combinedRenderReadbackFrames << L" / " << v.combinedReadbackFrames << L"\n"
+           << L"  gpuCompositedFrames: " << r.gpuCompositedFrames << L" / " << v.gpuCompositedFrames << L"\n"
+           << L"  combinedGpuCompositionFrames: " << r.combinedGpuCompositionFrames << L"\n"
+           << L"  d2dTextureBridgeFrames: " << r.d2dTextureBridgeFrames << L" / " << v.d2dTextureBridgeFrames << L"\n"
+           << L"  d2dTextureBridgeAttempts: " << aquariumD2DBridgeAttemptCount_ << L"\n"
+           << L"  d2dTextureBridgeSuccesses: " << aquariumD2DBridgeSuccessCount_ << L"\n"
+           << L"  d2dTextureBridgeDirectSuccesses: " << aquariumD2DBridgeDirectSuccessCount_ << L"\n"
+           << L"  d2dTextureBridgeSharedSuccesses: " << aquariumD2DBridgeSharedSuccessCount_ << L"\n"
+           << L"  d2dSharedBufferCount: " << aquariumD2DBridgeSharedBufferCount_ << L"\n"
+           << L"  d2dSharedWriteIndex: " << aquariumD2DBridgeSharedWriteIndexStat_ << L"\n"
+           << L"  d2dSharedDrawIndex: " << aquariumD2DBridgeSharedDrawIndexStat_ << L"\n"
+           << L"  d2dSharedBitmapRecreates: " << aquariumD2DBridgeSharedBitmapRecreateCount_ << L"\n"
+           << L"  d2dSharedCopies: " << aquariumD2DBridgeSharedCopyCount_ << L"\n"
+           << L"  d2dSharedMutexAcquires: " << aquariumD2DBridgeSharedMutexAcquireCount_ << L"\n"
+           << L"  d2dSharedMutexContentions: " << aquariumD2DBridgeSharedMutexContentionCount_ << L"\n"
+           << L"  d2dSharedD2DFlushes: " << aquariumD2DBridgeSharedD2DFlushCount_ << L"\n"
+           << L"  d2dTextureBridgeSurfaceDiagnostics: " << widen(aquariumD2DBridgeSurfaceDiagnostics_.empty() ? std::string("none") : aquariumD2DBridgeSurfaceDiagnostics_) << L"\n"
+           << L"  d2dFrameCompositor: " << d2dFrameCompositor_.WideDiagnostics() << L"\n"
+           << L"  d2dFrameDiagnostics: " << d2dFrameDiagnostics_.WideDiagnostics() << L"\n"
+           << L"  d2dPresentScheduler: " << d2dPresentScheduler_.WideDiagnostics() << L"\n"
+           << L"  d2dViewportRuntime: " << d2dViewportBridgeRuntime_.WideDiagnostics() << L"\n"
+           << L"  d2dViewportCopyScheduler: " << d2dViewportCopyScheduler_.WideDiagnostics() << L"\n"
+           << L"  d2dViewportTextureCache: " << d2dViewportTextureCache_.WideDiagnostics() << L"\n"
+           << L"  slateRendererPipeline: " << slateRendererPipeline_.WideDiagnostics() << L"\n"
+           << L"  slateLayerTree: " << slateLayerTree_.WideDiagnostics() << L"\n"
+           << L"  slatePaintJournal: " << slatePaintJournal_.WideDiagnostics() << L"\n"
+           << L"  d2dCompositorAudit: " << d2dCompositorAudit_.WideDiagnostics() << L"\n"
+           << L"  aquariumViewportInput: " << aquariumViewportInputDiagnosticsWide() << L"\n"
+           << L"  gpuOverlayBakedFrames: " << r.gpuOverlayBakedFrames << L" / " << v.gpuOverlayBakedFrames << L"\n"
+           << L"  gpuOverlayVertices: " << r.gpuOverlayVertices << L" / " << v.gpuOverlayVertexCount << L"\n"
+           << L"  compositionFrames: " << r.compositionFrames << L"\n"
+           << L"  compositionResizes: " << r.compositionResizes << L"\n"
+           << L"  targetResizes: " << v.targetResizes << L"\n"
+           << L"  framesRendered: " << v.framesRendered << L"\n"
+           << L"  lastPrimitiveCount: " << v.lastPrimitiveCount << L"\n"
+           << L"  lastVertexCount: " << v.lastVertexCount << L"\n"
+           << L"  lastExtent: " << v.lastExtent.width << L"x" << v.lastExtent.height << L"\n"
+           << L"  uploadBytesAllocated: " << r.uploadBytesAllocated << L"\n"
+           << L"  uploadAllocations: " << r.uploadAllocations << L"\n"
+           << L"  mappedUploadBytes: " << r.mappedUploadBytes << L"\n"
+           << L"  mappedUploadUpdates: " << r.mappedUploadUpdates << L"\n"
+           << L"  nativeBuffers: " << r.nativeBuffers << L"\n"
+           << L"  nativeTextures: " << r.nativeTextures << L"\n"
+           << L"  nativePipelines: " << r.nativePipelines << L"\n"
+           << L"  compiledShaders: " << r.compiledShaders << L"\n"
+           << L"  descriptorAllocations: " << r.descriptorAllocations << L"\n"
+           << L"  drawCallsExecuted: " << r.drawCallsExecuted << L"\n"
+           << L"  submittedGpuCommandLists: " << r.submittedGpuCommandLists << L"\n"
+           << L"  completedFenceValue: " << r.completedFenceValue << L"\n"
+           << L"  blockingFenceWaits: " << r.blockingFenceWaits << L"\n"
+           << L"  blockingFenceWaitMs: " << aceFormatDouble(r.blockingFenceWaitMs) << L"\n"
+           << L"  readbackBytes: " << r.readbackBytes << L"\n"
+           << L"  combinedRenderReadbackBytes: " << r.combinedRenderReadbackBytes << L"\n"
+           << L"  readbackBufferReuses: " << r.readbackBufferReuses << L"\n"
+           << L"  readbackBufferResizes: " << r.readbackBufferResizes << L"\n"
+           << L"  offscreenSceneTargets: " << r.offscreenSceneTargets << L"\n"
+           << L"  wvpConstantsUploaded: " << r.wvpConstantsUploaded;
+
+        if (logLine)
+        {
+            std::ostringstream os;
+            os << "path=" << AceEngineRenderPathToUtf8(snapshot.activeRenderPath)
+               << " backend=" << (aquariumGpuViewportRenderer_ ? "DX12" : "unknown")
+               << " viewport_mode=" << AceEngineRenderPathToUtf8(snapshot.activeRenderPath)
+               << " ui_layer=D2D_RETAINED_OVERLAY quality=preserved gpu_text_overlay=false"
+               << " viewport_texture_resource=" << am::renderer::rhi::AceViewportTextureResourceKindToString(snapshot.viewportTexture.kind)
+               << " viewport_texture_bridge=" << am::renderer::rhi::AceViewportTextureBridgeModeToString(snapshot.viewportBridge.mode)
+               << " viewport_ui_renderer=" << am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.uiRenderer)
+               << " viewport_required_ui_renderer=" << am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.requiredUiRenderer)
+               << " viewport_required_interop=" << am::renderer::rhi::AceViewportGpuInteropKindToString(snapshot.viewportBridge.requiredInterop)
+               << " viewport_bridge_fallback_reason=" << snapshot.viewportBridge.fallbackReason
+               << " legacy_fallback=" << (snapshot.viewportBridge.legacyFallbackUsed ? "true" : "false")
+               << " fatal_bridge_step=" << (snapshot.viewportBridge.fatalBridgeStep.empty() ? "none" : snapshot.viewportBridge.fatalBridgeStep)
+               << " fatal_bridge_hresult=" << (snapshot.viewportBridge.fatalBridgeHresult.empty() ? "none" : snapshot.viewportBridge.fatalBridgeHresult)
+               << " viewportTextureExports=" << v.viewportTextureExports
+               << " viewportBridgeReadbackFallbacks=" << v.viewportBridgeReadbackFallbacks
+               << " readback_active=" << (readbackActive ? "true" : "false")
+               << " viewportCacheHits=" << aquariumViewportCacheHitCount_
+               << " viewportCacheMisses=" << aquariumViewportCacheMissCount_
+               << " gpuComposited=" << r.gpuCompositedFrames << "/" << v.gpuCompositedFrames
+               << " gpuOverlayBaked=" << r.gpuOverlayBakedFrames << "/" << v.gpuOverlayBakedFrames
+               << " gpuOverlayVerts=" << r.gpuOverlayVertices << "/" << v.gpuOverlayVertexCount
+               << " combinedReadback=" << r.combinedRenderReadbackFrames << "/" << v.combinedReadbackFrames
+               << " blockingFenceWaits=" << r.blockingFenceWaits
+               << " blockingFenceWaitMs=" << aceFormatDoubleUtf8(r.blockingFenceWaitMs)
+               << " frames=" << v.framesRendered
+               << " zeroCopy=" << v.zeroCopyFrames
+               << " readback=" << v.readbackFrames
+               << " compositionFrames=" << r.compositionFrames
+               << " compositionResizes=" << r.compositionResizes
+               << " targetResizes=" << v.targetResizes
+               << " primitives=" << v.lastPrimitiveCount
+               << " verts=" << v.lastVertexCount
+               << " extent=" << v.lastExtent.width << "x" << v.lastExtent.height
+               << " uploadBytesAllocated=" << r.uploadBytesAllocated
+               << " uploadAllocations=" << r.uploadAllocations
+               << " nativeBuffers=" << r.nativeBuffers
+               << " nativeTextures=" << r.nativeTextures
+               << " nativePipelines=" << r.nativePipelines
+               << " compiledShaders=" << r.compiledShaders
+               << " descriptorAllocations=" << r.descriptorAllocations
+               << " drawCallsExecuted=" << r.drawCallsExecuted
+               << " submittedGpuCommandLists=" << r.submittedGpuCommandLists
+               << " completedFenceValue=" << r.completedFenceValue
+               << " readbackBytes=" << r.readbackBytes
+               << " offscreenSceneTargets=" << r.offscreenSceneTargets
+               << " wvpConstantsUploaded=" << r.wvpConstantsUploaded
+               << " mappedUploadBytes=" << r.mappedUploadBytes
+               << " mappedUploadUpdates=" << r.mappedUploadUpdates
+               << " readbackBufferReuses=" << r.readbackBufferReuses
+               << " readbackBufferResizes=" << r.readbackBufferResizes
+               << " combinedRenderReadbackBytes=" << r.combinedRenderReadbackBytes
+               << " gpuCompositedFrames=" << r.gpuCompositedFrames
+               << " combinedGpuCompositionFrames=" << r.combinedGpuCompositionFrames
+               << " d2dTextureBridgeFrames=" << r.d2dTextureBridgeFrames << "/" << v.d2dTextureBridgeFrames
+               << " d2dTextureBridgeAttempts=" << aquariumD2DBridgeAttemptCount_
+               << " d2dTextureBridgeSuccesses=" << aquariumD2DBridgeSuccessCount_
+               << " d2dTextureBridgeDirectSuccesses=" << aquariumD2DBridgeDirectSuccessCount_
+               << " d2dTextureBridgeSharedSuccesses=" << aquariumD2DBridgeSharedSuccessCount_
+               << " d2dSharedBufferCount=" << aquariumD2DBridgeSharedBufferCount_
+               << " d2dSharedWriteIndex=" << aquariumD2DBridgeSharedWriteIndexStat_
+               << " d2dSharedDrawIndex=" << aquariumD2DBridgeSharedDrawIndexStat_
+               << " d2dSharedBitmapRecreates=" << aquariumD2DBridgeSharedBitmapRecreateCount_
+               << " d2dSharedCopies=" << aquariumD2DBridgeSharedCopyCount_
+               << " d2dSharedMutexAcquires=" << aquariumD2DBridgeSharedMutexAcquireCount_
+               << " d2dSharedMutexContentions=" << aquariumD2DBridgeSharedMutexContentionCount_
+               << " d2dSharedD2DFlushes=" << aquariumD2DBridgeSharedD2DFlushCount_
+               << " d2dTextureBridgeSurfaceDiagnostics=" << (aquariumD2DBridgeSurfaceDiagnostics_.empty() ? "none" : aquariumD2DBridgeSurfaceDiagnostics_)
+               << " d2dFrameCompositor=" << d2dFrameCompositor_.Diagnostics()
+               << " d2dFrameDiagnostics=" << d2dFrameDiagnostics_.Diagnostics()
+               << " d2dPresentScheduler=" << d2dPresentScheduler_.Diagnostics()
+               << " d2dViewportRuntime=" << d2dViewportBridgeRuntime_.Diagnostics()
+               << " d2dViewportCopyScheduler=" << d2dViewportCopyScheduler_.Diagnostics()
+               << " d2dViewportTextureCache=" << d2dViewportTextureCache_.Diagnostics()
+               << " slateRendererPipeline=" << slateRendererPipeline_.Diagnostics()
+               << " d2dCompositorAudit=" << d2dCompositorAudit_.Diagnostics()
+               << " aquariumViewportInput=" << aquariumViewportInputDiagnostics()
+               << " gpuOverlayBakedFrames=" << r.gpuOverlayBakedFrames
+               << " gpuOverlayVertices=" << r.gpuOverlayVertices;
+            *logLine = os.str();
+        }
+        return ss.str();
+    }
+
+    std::wstring AceShellUi::formatStatFps(std::string* logLine) const
+    {
+        const auto s = enginePerfStats_.Summary();
+        const auto snapshot = buildEngineStatsSnapshot();
+        const auto& r = snapshot.rhiStats;
+        const bool readbackActive = !(snapshot.activeRenderPath == AceEngineRenderPath::Dx12GpuComposited ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::Dx12ZeroCopy ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::Dx12CachedReadback ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::Dx12D2DTextureBridge ||
+                                      snapshot.activeRenderPath == AceEngineRenderPath::FailedD2DDeviceContext);
+
+        std::wstringstream ss;
+        ss << L"[STAT_FPS]\n"
+           << L"  samples: " << s.count << L" / " << AceEnginePerfStats::kMaxSamples << L"\n"
+           << L"  fps.last: " << aceFormatDouble(s.fpsLast) << L"\n"
+           << L"  fps.avg: " << aceFormatDouble(s.fpsAvg) << L"\n"
+           << L"  fps.min: " << aceFormatDouble(s.fpsMin) << L"\n"
+           << L"  fps.max: " << aceFormatDouble(s.fpsMax) << L"\n"
+           << L"  frame_ms.last: " << aceFormatDouble(s.frameMsLast) << L"\n"
+           << L"  frame_ms.avg: " << aceFormatDouble(s.frameMsAvg) << L"\n"
+           << L"  frame_ms.min: " << aceFormatDouble(s.frameMsMin) << L"\n"
+           << L"  frame_ms.max: " << aceFormatDouble(s.frameMsMax) << L"\n"
+           << L"  ui_ms: " << aceFormatDouble(s.uiMsLast) << L"\n"
+           << L"  layout_ms: " << aceFormatDouble(s.layoutMsLast) << L"\n"
+           << L"  aquarium_build_ms: " << aceFormatDouble(s.aquariumBuildMsLast) << L"\n"
+           << L"  rhi_render_ms: " << aceFormatDouble(s.rhiRenderMsLast) << L"\n"
+           << L"  present_or_composite_ms: " << aceFormatDouble(s.presentOrCompositeMsLast) << L"\n"
+           << L"  fallback_path: " << AceEngineRenderPathToWide(s.fallbackPath) << L"\n"
+           << L"  viewport_mode: " << AceEngineRenderPathToWide(snapshot.activeRenderPath) << L"\n"
+           << L"  ui_layer: D2D_RETAINED_OVERLAY\n"
+           << L"  quality: preserved\n"
+           << L"  gpu_text_overlay: false\n"
+           << L"  viewport_texture_resource: " << widen(am::renderer::rhi::AceViewportTextureResourceKindToString(snapshot.viewportTexture.kind)) << L"\n"
+           << L"  viewport_texture_bridge: " << widen(am::renderer::rhi::AceViewportTextureBridgeModeToString(snapshot.viewportBridge.mode)) << L"\n"
+           << L"  viewport_ui_renderer: " << widen(am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.uiRenderer)) << L"\n"
+           << L"  viewport_required_ui_renderer: " << widen(am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.requiredUiRenderer)) << L"\n"
+           << L"  viewport_required_interop: " << widen(am::renderer::rhi::AceViewportGpuInteropKindToString(snapshot.viewportBridge.requiredInterop)) << L"\n"
+           << L"  viewport_bridge_fallback_reason: " << widen(snapshot.viewportBridge.fallbackReason) << L"\n"
+           << L"  legacy_fallback: " << (snapshot.viewportBridge.legacyFallbackUsed ? L"true" : L"false") << L"\n"
+           << L"  fatal_bridge_step: " << widen(snapshot.viewportBridge.fatalBridgeStep.empty() ? std::string("none") : snapshot.viewportBridge.fatalBridgeStep) << L"\n"
+           << L"  fatal_bridge_hresult: " << widen(snapshot.viewportBridge.fatalBridgeHresult.empty() ? std::string("none") : snapshot.viewportBridge.fatalBridgeHresult) << L"\n"
+           << L"  readback_active: " << (readbackActive ? L"true" : L"false") << L"\n"
+           << L"  viewport_cache_hits: " << aquariumViewportCacheHitCount_ << L"\n"
+           << L"  viewport_cache_misses: " << aquariumViewportCacheMissCount_ << L"\n"
+           << L"  gpu_composited_frames: " << r.gpuCompositedFrames << L"\n"
+           << L"  combined_gpu_composition_frames: " << r.combinedGpuCompositionFrames << L"\n"
+           << L"  d2d_texture_bridge_frames: " << r.d2dTextureBridgeFrames << L" / " << snapshot.viewportStats.d2dTextureBridgeFrames << L"\n"
+           << L"  d2d_texture_bridge_attempts: " << aquariumD2DBridgeAttemptCount_ << L"\n"
+           << L"  d2d_texture_bridge_successes: " << aquariumD2DBridgeSuccessCount_ << L"\n"
+           << L"  d2d_texture_bridge_direct_successes: " << aquariumD2DBridgeDirectSuccessCount_ << L"\n"
+           << L"  d2d_texture_bridge_shared_successes: " << aquariumD2DBridgeSharedSuccessCount_ << L"\n"
+           << L"  d2d_shared_buffer_count: " << aquariumD2DBridgeSharedBufferCount_ << L"\n"
+           << L"  d2d_shared_write_index: " << aquariumD2DBridgeSharedWriteIndexStat_ << L"\n"
+           << L"  d2d_shared_draw_index: " << aquariumD2DBridgeSharedDrawIndexStat_ << L"\n"
+           << L"  d2d_shared_bitmap_recreates: " << aquariumD2DBridgeSharedBitmapRecreateCount_ << L"\n"
+           << L"  d2d_shared_copies: " << aquariumD2DBridgeSharedCopyCount_ << L"\n"
+           << L"  d2d_shared_mutex_acquires: " << aquariumD2DBridgeSharedMutexAcquireCount_ << L"\n"
+           << L"  d2d_shared_mutex_contentions: " << aquariumD2DBridgeSharedMutexContentionCount_ << L"\n"
+           << L"  d2d_shared_d2d_flushes: " << aquariumD2DBridgeSharedD2DFlushCount_ << L"\n"
+           << L"  d2d_texture_bridge_surface_diagnostics: " << widen(aquariumD2DBridgeSurfaceDiagnostics_.empty() ? std::string("none") : aquariumD2DBridgeSurfaceDiagnostics_) << L"\n"
+           << L"  d2d_frame_compositor: " << d2dFrameCompositor_.WideDiagnostics() << L"\n"
+           << L"  d2d_frame_diagnostics: " << d2dFrameDiagnostics_.WideDiagnostics() << L"\n"
+           << L"  d2d_present_scheduler: " << d2dPresentScheduler_.WideDiagnostics() << L"\n"
+           << L"  d2d_viewport_runtime: " << d2dViewportBridgeRuntime_.WideDiagnostics() << L"\n"
+           << L"  d2d_viewport_copy_scheduler: " << d2dViewportCopyScheduler_.WideDiagnostics() << L"\n"
+           << L"  d2d_viewport_texture_cache: " << d2dViewportTextureCache_.WideDiagnostics() << L"\n"
+           << L"  slate_renderer_pipeline: " << slateRendererPipeline_.WideDiagnostics() << L"\n"
+           << L"  slate_layer_tree: " << slateLayerTree_.WideDiagnostics() << L"\n"
+           << L"  slate_paint_journal: " << slatePaintJournal_.WideDiagnostics() << L"\n"
+           << L"  d2d_compositor_audit: " << d2dCompositorAudit_.WideDiagnostics() << L"\n"
+           << L"  aquarium_viewport_input: " << aquariumViewportInputDiagnosticsWide() << L"\n"
+           << L"  gpu_overlay_baked: " << r.gpuOverlayBakedFrames << L"\n"
+           << L"  combined_readback_frames: " << r.combinedRenderReadbackFrames << L"\n"
+           << L"  readback_bytes: " << r.readbackBytes << L"\n"
+           << L"  fence_waits: " << r.blockingFenceWaits << L"\n"
+           << L"  fence_wait_ms: " << aceFormatDouble(r.blockingFenceWaitMs);
+
+        if (logLine)
+        {
+            std::ostringstream os;
+            os << "samples=" << s.count
+               << " fps_last=" << aceFormatDoubleUtf8(s.fpsLast)
+               << " fps_avg=" << aceFormatDoubleUtf8(s.fpsAvg)
+               << " fps_min=" << aceFormatDoubleUtf8(s.fpsMin)
+               << " fps_max=" << aceFormatDoubleUtf8(s.fpsMax)
+               << " frame_last_ms=" << aceFormatDoubleUtf8(s.frameMsLast)
+               << " frame_avg_ms=" << aceFormatDoubleUtf8(s.frameMsAvg)
+               << " frame_min_ms=" << aceFormatDoubleUtf8(s.frameMsMin)
+               << " frame_max_ms=" << aceFormatDoubleUtf8(s.frameMsMax)
+               << " ui_ms=" << aceFormatDoubleUtf8(s.uiMsLast)
+               << " layout_ms=" << aceFormatDoubleUtf8(s.layoutMsLast)
+               << " aquarium_build_ms=" << aceFormatDoubleUtf8(s.aquariumBuildMsLast)
+               << " rhi_render_ms=" << aceFormatDoubleUtf8(s.rhiRenderMsLast)
+               << " present_or_composite_ms=" << aceFormatDoubleUtf8(s.presentOrCompositeMsLast)
+               << " fallback_path=" << AceEngineRenderPathToUtf8(s.fallbackPath)
+               << " viewport_mode=" << AceEngineRenderPathToUtf8(snapshot.activeRenderPath)
+               << " ui_layer=D2D_RETAINED_OVERLAY quality=preserved gpu_text_overlay=false"
+               << " viewport_texture_resource=" << am::renderer::rhi::AceViewportTextureResourceKindToString(snapshot.viewportTexture.kind)
+               << " viewport_texture_bridge=" << am::renderer::rhi::AceViewportTextureBridgeModeToString(snapshot.viewportBridge.mode)
+               << " viewport_ui_renderer=" << am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.uiRenderer)
+               << " viewport_required_ui_renderer=" << am::renderer::rhi::AceViewportUiRendererKindToString(snapshot.viewportBridge.requiredUiRenderer)
+               << " viewport_required_interop=" << am::renderer::rhi::AceViewportGpuInteropKindToString(snapshot.viewportBridge.requiredInterop)
+               << " viewport_bridge_fallback_reason=" << snapshot.viewportBridge.fallbackReason
+               << " legacy_fallback=" << (snapshot.viewportBridge.legacyFallbackUsed ? "true" : "false")
+               << " fatal_bridge_step=" << (snapshot.viewportBridge.fatalBridgeStep.empty() ? "none" : snapshot.viewportBridge.fatalBridgeStep)
+               << " fatal_bridge_hresult=" << (snapshot.viewportBridge.fatalBridgeHresult.empty() ? "none" : snapshot.viewportBridge.fatalBridgeHresult)
+               << " readback_active=" << (readbackActive ? "true" : "false")
+               << " viewport_cache_hits=" << aquariumViewportCacheHitCount_
+               << " viewport_cache_misses=" << aquariumViewportCacheMissCount_
+               << " gpu_composited_frames=" << r.gpuCompositedFrames
+               << " combined_gpu_composition_frames=" << r.combinedGpuCompositionFrames
+               << " d2d_texture_bridge_frames=" << r.d2dTextureBridgeFrames << "/" << snapshot.viewportStats.d2dTextureBridgeFrames
+               << " d2d_texture_bridge_attempts=" << aquariumD2DBridgeAttemptCount_
+               << " d2d_texture_bridge_successes=" << aquariumD2DBridgeSuccessCount_
+               << " d2d_texture_bridge_direct_successes=" << aquariumD2DBridgeDirectSuccessCount_
+               << " d2d_texture_bridge_shared_successes=" << aquariumD2DBridgeSharedSuccessCount_
+               << " d2d_shared_buffer_count=" << aquariumD2DBridgeSharedBufferCount_
+               << " d2d_shared_write_index=" << aquariumD2DBridgeSharedWriteIndexStat_
+               << " d2d_shared_draw_index=" << aquariumD2DBridgeSharedDrawIndexStat_
+               << " d2d_shared_bitmap_recreates=" << aquariumD2DBridgeSharedBitmapRecreateCount_
+               << " d2d_shared_copies=" << aquariumD2DBridgeSharedCopyCount_
+               << " d2d_shared_mutex_acquires=" << aquariumD2DBridgeSharedMutexAcquireCount_
+               << " d2d_shared_mutex_contentions=" << aquariumD2DBridgeSharedMutexContentionCount_
+               << " d2d_shared_d2d_flushes=" << aquariumD2DBridgeSharedD2DFlushCount_
+               << " d2d_texture_bridge_surface_diagnostics=" << (aquariumD2DBridgeSurfaceDiagnostics_.empty() ? "none" : aquariumD2DBridgeSurfaceDiagnostics_)
+               << " d2d_frame_compositor=" << d2dFrameCompositor_.Diagnostics()
+               << " d2d_frame_diagnostics=" << d2dFrameDiagnostics_.Diagnostics()
+               << " d2d_present_scheduler=" << d2dPresentScheduler_.Diagnostics()
+               << " d2d_viewport_runtime=" << d2dViewportBridgeRuntime_.Diagnostics()
+               << " d2d_viewport_copy_scheduler=" << d2dViewportCopyScheduler_.Diagnostics()
+               << " d2d_viewport_texture_cache=" << d2dViewportTextureCache_.Diagnostics()
+               << " slate_renderer_pipeline=" << slateRendererPipeline_.Diagnostics()
+               << " d2d_compositor_audit=" << d2dCompositorAudit_.Diagnostics()
+               << " aquarium_viewport_input=" << aquariumViewportInputDiagnostics()
+               << " gpu_overlay_baked=" << r.gpuOverlayBakedFrames
+               << " combined_readback_frames=" << r.combinedRenderReadbackFrames
+               << " readback_bytes=" << r.readbackBytes
+               << " fence_waits=" << r.blockingFenceWaits
+               << " fence_wait_ms=" << aceFormatDoubleUtf8(r.blockingFenceWaitMs);
+            *logLine = os.str();
+        }
+        return ss.str();
+    }
+
+    std::wstring AceShellUi::formatStatUi(std::string* logLine) const
+    {
+        const auto textStats = D2DTextLayoutFoundation::Stats();
+        const auto drawStats = uiDrawCommands_.Stats();
+        const auto invalidationStats = uiInvalidation_.Snapshot();
+        const auto retainedStats = uiRetainedLayout_.Stats();
+        const auto styleStats = uiStyleSet_.Stats();
+        const auto effectStats = D2DCachedEffects::stats();
+        std::wstringstream ss;
+        ss << L"text_draw=" << textStats.drawCount
+           << L" ellipsis=" << textStats.ellipsisCount
+           << L" retained_nodes=" << retainedStats.nodeCount
+           << L" retained_passes=" << retainedStats.arrangePasses
+           << L" draw_commands=" << drawStats.commandCount
+           << L" draw_commands_max=" << drawStats.maxCommandCount
+           << L" dirty_marks=" << invalidationStats.markCount
+           << L" dirty_rects=" << invalidationStats.rects.size()
+           << L" styles_panels=" << styleStats.panelStyleCount
+           << L" styles_text=" << styleStats.textStyleCount
+           << L" text_cache_hits=" << textCache_.hitCount()
+           << L" text_cache_misses=" << textCache_.missCount()
+           << L" layout_cache_hits=" << messageList_.layoutCacheHits()
+           << L" layout_cache_misses=" << messageList_.layoutCacheMisses()
+           << L" effect_cache_hits=" << effectStats.hitCount
+           << L" effect_cache_misses=" << effectStats.missCount
+           << L" viewport_layer_hold=" << aquariumParentCompositedHoldFrames_
+           << L" viewport_layer_switches=" << aquariumViewportLayerModeSwitchCount_
+           << L" fast_viewport_paints=" << aquariumFastViewportPaintCount_
+           << L" full_viewport_paints=" << aquariumFullViewportPaintCount_;
+        if (logLine)
+        {
+            std::ostringstream os;
+            os << "text_draw=" << textStats.drawCount
+               << " ellipsis=" << textStats.ellipsisCount
+               << " retained_nodes=" << retainedStats.nodeCount
+               << " retained_passes=" << retainedStats.arrangePasses
+               << " draw_commands=" << drawStats.commandCount
+               << " draw_commands_max=" << drawStats.maxCommandCount
+               << " dirty_marks=" << invalidationStats.markCount
+               << " dirty_rects=" << invalidationStats.rects.size()
+               << " styles_panels=" << styleStats.panelStyleCount
+               << " styles_text=" << styleStats.textStyleCount
+               << " text_cache_hits=" << textCache_.hitCount()
+               << " text_cache_misses=" << textCache_.missCount()
+               << " layout_cache_hits=" << messageList_.layoutCacheHits()
+               << " layout_cache_misses=" << messageList_.layoutCacheMisses()
+               << " effect_cache_hits=" << effectStats.hitCount
+               << " effect_cache_misses=" << effectStats.missCount
+               << " viewport_layer_hold=" << aquariumParentCompositedHoldFrames_
+               << " viewport_layer_switches=" << aquariumViewportLayerModeSwitchCount_
+               << " fast_viewport_paints=" << aquariumFastViewportPaintCount_
+               << " full_viewport_paints=" << aquariumFullViewportPaintCount_;
+            *logLine = os.str();
+        }
+        return ss.str();
+    }
+
+    void AceShellUi::appendEngineCommandOutput(const std::wstring& title, const std::wstring& body, const std::string& logTag, const std::string& logLine)
+    {
+        std::wstring warning;
+        const bool logged = AceEngineAppendLog(logTag, logLine, &warning);
+
+        // PERF2R2: keep the compact one-line log entry for grepping, then append
+        // the user-facing multi-line body as detail records. The D2D console reads
+        // the log file tail, so without these detail lines the pretty console was
+        // also a very stylish blindfold. Humanity, naturally, noticed.
+        std::wstring detailWarning;
+        const auto detailLines = aceDetailLogLinesFromBody(body);
+        const bool loggedDetails = detailLines.empty() || AceEngineAppendLogLines(logTag + "_DETAIL", detailLines, &detailWarning);
+
+        messageList_.addMessage(makeMessage(L"Tool", body, false, false, ChatMessageKind::Tool, title));
+        if (!logged && !warning.empty())
+        {
+            messageList_.addMessage(makeMessage(L"Warning", warning, false, false, ChatMessageKind::Warning, L"engine log"));
+        }
+        if (!loggedDetails && !detailWarning.empty())
+        {
+            messageList_.addMessage(makeMessage(L"Warning", detailWarning, false, false, ChatMessageKind::Warning, L"engine log"));
+        }
+        if (engineLogOverlayVisible_)
+        {
+            refreshEngineLogOverlayLines();
+        }
+    }
+
     void AceShellUi::sendCurrentInput()
     {
         if (input_.empty())
@@ -3486,9 +5458,23 @@ namespace am::ui
 
     bool AceShellUi::handleLocalInputCommand(const std::wstring& text)
     {
+        const std::wstring normalized = aceTrimCommand(text);
+        if (executeEngineStatsCommand(normalized))
+        {
+            return true;
+        }
+
+        const bool slashCommand = !text.empty() && text.front() == L'/';
         const std::wstring prefix = L"/rename ";
         if (text.rfind(prefix, 0) != 0)
         {
+            if (slashCommand)
+            {
+                messageList_.addMessage(makeMessage(L"Warning", L"Unknown local command: " + text + L". Not submitted to backend.", false, false, ChatMessageKind::Warning, L"command"));
+                AceEngineAppendLog("UNKNOWN_COMMAND", "backend_submit=false command=slash_unknown", nullptr);
+                statusBar_.setText(L"Unknown local command. Not submitted.");
+                return true;
+            }
             return false;
         }
 
@@ -3756,6 +5742,1664 @@ namespace am::ui
 
         refreshUiDebugOverlay();
         uiDebugOverlay_.Render(ctx);
+    }
+
+    void AceShellUi::toggleEngineLogOverlay()
+    {
+        engineLogOverlayVisible_ = !engineLogOverlayVisible_;
+        ++engineLogOverlayToggleCount_;
+        if (engineLogOverlayVisible_)
+        {
+            refreshEngineLogOverlayLines();
+            engineLogOverlayInputFocused_ = true;
+            engineLogTextFocused_ = false;
+            engineLogOverlayInput_.setFocused(true);
+            input_.setFocused(false);
+            engineLogOverlayScroll_.autoScrollWhenAtBottom = true;
+            if (!engineLogOverlayScroll_.userScrolled)
+            {
+                engineLogOverlayScroll_.offset = engineLogOverlayScroll_.maxScroll;
+            }
+        }
+        else
+        {
+            engineLogOverlayInputFocused_ = false;
+            engineLogTextFocused_ = false;
+            clearEngineLogTextSelection();
+            engineLogOverlayInput_.setFocused(false);
+            input_.setFocused(focus_.is(D2DFocusTarget::TextInput));
+        }
+
+        requestParentCompositedViewportHold(engineLogOverlayVisible_ ? 30u : 20u, engineLogOverlayVisible_ ? L"engine-log-open" : L"engine-log-close");
+
+        // ACE-UI12: no toast on console toggle. The console itself is the
+        // feedback. Throwing a toast over a viewport overlay is how a UI becomes
+        // a sandwich made of popups, and nobody ordered that.
+        statusBar_.setText(engineLogOverlayVisible_ ? L"Engine log console opened." : L"Engine log console closed.");
+        invalidate();
+    }
+
+    void AceShellUi::refreshEngineLogOverlayLines()
+    {
+        const bool wasAtBottom = engineLogOverlayScroll_.offset >= engineLogOverlayScroll_.maxScroll - 2.0f;
+        clearEngineLogTextSelection();
+        engineLogOverlayLines_.clear();
+        std::wstring warning;
+        const auto rawLines = AceEngineReadLogTail(240, &warning);
+        if (!warning.empty())
+        {
+            engineLogOverlayLines_.push_back(L"[warning] " + warning);
+        }
+        else if (rawLines.empty())
+        {
+            engineLogOverlayLines_.push_back(L"Build/Logs/ace_engine.log is empty or has not been created yet.");
+            engineLogOverlayLines_.push_back(L"Run stat_rhi, stat_coords, stat_fps, stat_ui, or stat_help to write entries.");
+        }
+        else
+        {
+            for (const auto& line : rawLines)
+            {
+                const auto wrapped = aceWrapEngineConsoleLine(aceWideLossy(line));
+                engineLogOverlayLines_.insert(engineLogOverlayLines_.end(), wrapped.begin(), wrapped.end());
+            }
+        }
+
+        if (wasAtBottom || !engineLogOverlayScroll_.userScrolled)
+        {
+            engineLogOverlayScroll_.autoScrollWhenAtBottom = true;
+            engineLogOverlayScroll_.userScrolled = false;
+        }
+    }
+
+    bool AceShellUi::submitEngineLogOverlayInput()
+    {
+        std::wstring command = engineLogOverlayInput_.text();
+        const std::wstring normalized = aceTrimCommand(command);
+        if (normalized.empty())
+        {
+            statusBar_.setText(L"Engine console input is empty.");
+            return true;
+        }
+
+        engineLogOverlayInput_.setText(L"");
+        if (executeEngineStatsCommand(normalized))
+        {
+            refreshEngineLogOverlayLines();
+            engineLogOverlayScroll_.autoScrollWhenAtBottom = true;
+            engineLogOverlayScroll_.userScrolled = false;
+            return true;
+        }
+
+        const std::wstring body = L"Unknown engine console command: " + normalized + L". Not submitted to backend. Try stat_help.";
+        messageList_.addMessage(makeMessage(L"Warning", body, false, false, ChatMessageKind::Warning, L"engine console"));
+        std::wstring warning;
+        AceEngineAppendLog("UNKNOWN_COMMAND", "source=engine_log_overlay command=" + aceNarrowLossy(normalized) + " backend_submit=false", &warning);
+        if (!warning.empty())
+        {
+            messageList_.addMessage(makeMessage(L"Warning", warning, false, false, ChatMessageKind::Warning, L"engine log"));
+        }
+        refreshEngineLogOverlayLines();
+        statusBar_.setText(L"Unknown engine console command. Not submitted to backend.");
+        return true;
+    }
+
+    AceShellUi::EngineLogTextPosition AceShellUi::hitTestEngineLogText(float x, float y) const
+    {
+        EngineLogTextPosition hit{};
+        if (!engineLogOverlayVisible_ || engineLogOverlayLines_.empty() || engineLogOverlayLogViewportRect_.empty())
+        {
+            return hit;
+        }
+
+        constexpr float kLineHeight = 17.0f;
+        constexpr float kApproxMonoCharWidth = 7.8f;
+        const float localY = std::max(0.0f, y - engineLogOverlayLogViewportRect_.top + engineLogOverlayScroll_.offset);
+        const auto line = static_cast<std::size_t>(std::floor(localY / kLineHeight));
+        hit.line = std::min(line, engineLogOverlayLines_.size() - 1);
+
+        const std::wstring& text = engineLogOverlayLines_[hit.line];
+        if (x <= engineLogOverlayLogViewportRect_.left)
+        {
+            hit.column = 0;
+        }
+        else
+        {
+            const float localX = x - engineLogOverlayLogViewportRect_.left;
+            hit.column = std::min<std::size_t>(text.size(), static_cast<std::size_t>(std::floor(localX / kApproxMonoCharWidth)));
+        }
+        hit.valid = true;
+        return hit;
+    }
+
+    bool AceShellUi::engineLogHasTextSelection() const
+    {
+        return engineLogSelectionAnchor_.valid &&
+            engineLogSelectionActive_.valid &&
+            (engineLogSelectionAnchor_.line != engineLogSelectionActive_.line ||
+             engineLogSelectionAnchor_.column != engineLogSelectionActive_.column);
+    }
+
+    std::wstring AceShellUi::selectedEngineLogText() const
+    {
+        if (!engineLogHasTextSelection() || engineLogOverlayLines_.empty())
+        {
+            return L"";
+        }
+
+        EngineLogTextPosition first = engineLogSelectionAnchor_;
+        EngineLogTextPosition last = engineLogSelectionActive_;
+        if (std::tie(last.line, last.column) < std::tie(first.line, first.column))
+        {
+            std::swap(first, last);
+        }
+
+        first.line = std::min(first.line, engineLogOverlayLines_.size() - 1);
+        last.line = std::min(last.line, engineLogOverlayLines_.size() - 1);
+
+        std::wstringstream out;
+        for (std::size_t line = first.line; line <= last.line && line < engineLogOverlayLines_.size(); ++line)
+        {
+            const std::wstring& text = engineLogOverlayLines_[line];
+            const std::size_t start = line == first.line ? std::min(first.column, text.size()) : 0;
+            const std::size_t end = line == last.line ? std::min(last.column, text.size()) : text.size();
+            if (end > start)
+            {
+                out << text.substr(start, end - start);
+            }
+            if (line != last.line)
+            {
+                out << L"\r\n";
+            }
+        }
+        return out.str();
+    }
+
+    void AceShellUi::clearEngineLogTextSelection()
+    {
+        engineLogTextSelecting_ = false;
+        engineLogSelectionAnchor_ = {};
+        engineLogSelectionActive_ = {};
+    }
+
+    void AceShellUi::selectAllEngineLogText()
+    {
+        if (engineLogOverlayLines_.empty())
+        {
+            clearEngineLogTextSelection();
+            return;
+        }
+
+        engineLogSelectionAnchor_ = {0, 0, true};
+        engineLogSelectionActive_ = {
+            engineLogOverlayLines_.size() - 1,
+            engineLogOverlayLines_.back().size(),
+            true};
+        engineLogTextFocused_ = true;
+        engineLogTextSelecting_ = false;
+    }
+
+    bool AceShellUi::copyEngineLogTextSelectionToClipboard()
+    {
+        const std::wstring selected = selectedEngineLogText();
+        if (selected.empty())
+        {
+            return false;
+        }
+
+        std::string error;
+        if (!D2DClipboard::writeText(parent_, selected, &error))
+        {
+            statusBar_.setText(L"Engine log copy failed: " + widen(error));
+            return true;
+        }
+
+        statusBar_.setText(L"Copied engine log selection.");
+        return true;
+    }
+
+    void AceShellUi::renderEngineLogTextSelection(D2DRenderContext& ctx, float lineHeight) const
+    {
+        if (!ctx.target || !ctx.brushes.accentBlue || !engineLogHasTextSelection() || engineLogOverlayLines_.empty())
+        {
+            return;
+        }
+
+        EngineLogTextPosition first = engineLogSelectionAnchor_;
+        EngineLogTextPosition last = engineLogSelectionActive_;
+        if (std::tie(last.line, last.column) < std::tie(first.line, first.column))
+        {
+            std::swap(first, last);
+        }
+
+        constexpr float kApproxMonoCharWidth = 7.8f;
+        const float oldOpacity = ctx.brushes.accentBlue->GetOpacity();
+        for (std::size_t line = first.line; line <= last.line && line < engineLogOverlayLines_.size(); ++line)
+        {
+            const std::wstring& text = engineLogOverlayLines_[line];
+            const std::size_t start = line == first.line ? std::min(first.column, text.size()) : 0;
+            const std::size_t end = line == last.line ? std::min(last.column, text.size()) : text.size();
+            if (end <= start)
+            {
+                continue;
+            }
+
+            const float y = engineLogOverlayScroll_.viewport.top - engineLogOverlayScroll_.offset + static_cast<float>(line) * lineHeight;
+            if (y + lineHeight < engineLogOverlayScroll_.viewport.top || y > engineLogOverlayScroll_.viewport.bottom)
+            {
+                continue;
+            }
+
+            // PERF2R3.2: one source of truth for visual selection feedback.
+            // The selected text span uses a single tint; do not layer a row-band
+            // hover/selection color under a second word/span highlight.
+            UiRect highlight = makeUiRect(
+                engineLogOverlayScroll_.viewport.left + static_cast<float>(start) * kApproxMonoCharWidth,
+                y + 1.0f,
+                std::min(engineLogOverlayScroll_.viewport.right, engineLogOverlayScroll_.viewport.left + static_cast<float>(end) * kApproxMonoCharWidth + 4.0f),
+                y + lineHeight - 1.0f);
+            if (!highlight.empty())
+            {
+                ctx.brushes.accentBlue->SetOpacity(0.36f);
+                ctx.target->FillRectangle(highlight.d2d(), ctx.brushes.accentBlue);
+            }
+        }
+        ctx.brushes.accentBlue->SetOpacity(oldOpacity);
+    }
+
+    bool AceShellUi::handleEngineLogOverlayMouseDown(D2DRenderContext& ctx, float x, float y)
+    {
+        if (!engineLogOverlayVisible_ || !engineLogOverlayRect_.contains(x, y))
+        {
+            return false;
+        }
+
+        if (engineLogOverlayInput_.onMouseDown(ctx, x, y))
+        {
+            engineLogOverlayInputFocused_ = true;
+            engineLogTextFocused_ = false;
+            engineLogTextSelecting_ = false;
+            input_.setFocused(false);
+            return true;
+        }
+
+        engineLogOverlayInputFocused_ = false;
+        engineLogOverlayInput_.setFocused(false);
+
+        if (engineLogOverlayScroll_.viewport.contains(x, y))
+        {
+            engineLogTextFocused_ = true;
+            engineLogTextSelecting_ = true;
+            engineLogSelectionAnchor_ = hitTestEngineLogText(x, y);
+            engineLogSelectionActive_ = engineLogSelectionAnchor_;
+            input_.setFocused(false);
+            return true;
+        }
+
+        if (engineLogOverlayScroll_.thumb.contains(x, y))
+        {
+            return beginAquariumScrollbarDrag(x, y);
+        }
+
+        if (engineLogOverlayScroll_.track.contains(x, y))
+        {
+            const float page = std::max(24.0f, engineLogOverlayScroll_.viewportHeight - 24.0f);
+            engineLogOverlayScroll_.offset += y < engineLogOverlayScroll_.thumb.top ? -page : page;
+            engineLogOverlayScroll_.userScrolled = true;
+            clampAquariumScroll(engineLogOverlayScroll_);
+            engineLogOverlayScroll_.autoScrollWhenAtBottom = engineLogOverlayScroll_.offset >= engineLogOverlayScroll_.maxScroll - 2.0f;
+            return true;
+        }
+
+        return true;
+    }
+
+    bool AceShellUi::handleEngineLogOverlayMouseUp(D2DRenderContext& ctx, float x, float y)
+    {
+        if (!engineLogOverlayVisible_)
+        {
+            return false;
+        }
+
+        if (engineLogTextSelecting_)
+        {
+            engineLogSelectionActive_ = hitTestEngineLogText(x, y);
+            engineLogTextSelecting_ = false;
+            engineLogTextFocused_ = true;
+            return true;
+        }
+
+        if (engineLogOverlayInput_.onMouseUp(ctx, x, y))
+        {
+            return true;
+        }
+
+        return engineLogOverlayRect_.contains(x, y);
+    }
+
+    bool AceShellUi::handleEngineLogOverlayMouseMove(D2DRenderContext& ctx, float x, float y)
+    {
+        if (!engineLogOverlayVisible_)
+        {
+            return false;
+        }
+
+        if (engineLogTextSelecting_)
+        {
+            engineLogSelectionActive_ = hitTestEngineLogText(x, y);
+            return true;
+        }
+
+        if (engineLogOverlayInput_.onMouseMove(ctx, x, y))
+        {
+            return true;
+        }
+
+        return engineLogOverlayRect_.contains(x, y);
+    }
+
+    bool AceShellUi::handleEngineLogOverlayWheel(D2DRenderContext& ctx, float x, float y, int wheelDelta)
+    {
+        if (!engineLogOverlayVisible_ || !engineLogOverlayRect_.contains(x, y))
+        {
+            return false;
+        }
+
+        if (engineLogOverlayInput_.hitTest(x, y))
+        {
+            engineLogOverlayInput_.onMouseWheel(ctx, x, y, wheelDelta);
+            return true;
+        }
+
+        if (engineLogOverlayScroll_.viewport.contains(x, y) || engineLogOverlayScroll_.track.contains(x, y) || engineLogOverlayScroll_.thumb.contains(x, y))
+        {
+            engineLogOverlayScroll_.offset += static_cast<float>(-wheelDelta) * 0.34f;
+            engineLogOverlayScroll_.userScrolled = true;
+            clampAquariumScroll(engineLogOverlayScroll_);
+            engineLogOverlayScroll_.autoScrollWhenAtBottom = engineLogOverlayScroll_.offset >= engineLogOverlayScroll_.maxScroll - 2.0f;
+            if (engineLogOverlayScroll_.autoScrollWhenAtBottom)
+            {
+                engineLogOverlayScroll_.userScrolled = false;
+            }
+        }
+
+        return true;
+    }
+
+    bool AceShellUi::handleEngineLogOverlayChar(WPARAM wParam)
+    {
+        if (!engineLogOverlayVisible_)
+        {
+            return false;
+        }
+
+        if (engineLogOverlayInputFocused_)
+        {
+            return engineLogOverlayInput_.onChar(wParam);
+        }
+
+        // ACE-PERF2R3: when the log body owns focus, printable chars must not
+        // leak into the main chat input underneath the overlay.
+        return engineLogTextFocused_;
+    }
+
+    bool AceShellUi::handleEngineLogOverlayKeyDown(WPARAM wParam, const D2DKeyboardState& keyboard)
+    {
+        if (!engineLogOverlayVisible_)
+        {
+            return false;
+        }
+
+        if (wParam == VK_ESCAPE)
+        {
+            toggleEngineLogOverlay();
+            return true;
+        }
+
+        if (wParam == VK_RETURN && !keyboard.shift && engineLogOverlayInputFocused_)
+        {
+            return submitEngineLogOverlayInput();
+        }
+
+        if (wParam == VK_PRIOR || wParam == VK_NEXT)
+        {
+            const float page = std::max(24.0f, engineLogOverlayScroll_.viewportHeight - 24.0f);
+            engineLogOverlayScroll_.offset += (wParam == VK_PRIOR ? -page : page);
+            engineLogOverlayScroll_.userScrolled = true;
+            clampAquariumScroll(engineLogOverlayScroll_);
+            engineLogOverlayScroll_.autoScrollWhenAtBottom = engineLogOverlayScroll_.offset >= engineLogOverlayScroll_.maxScroll - 2.0f;
+            return true;
+        }
+
+        if (keyboard.ctrl && wParam == 'C')
+        {
+            if (engineLogHasTextSelection() && copyEngineLogTextSelectionToClipboard())
+            {
+                return true;
+            }
+
+            std::string error;
+            if (engineLogOverlayInput_.copySelectionToClipboard(parent_, &error))
+            {
+                statusBar_.setText(L"Copied engine console selection.");
+            }
+            return true;
+        }
+        if (keyboard.ctrl && wParam == 'A')
+        {
+            if (engineLogOverlayInputFocused_)
+            {
+                engineLogOverlayInput_.selectAll();
+            }
+            else
+            {
+                selectAllEngineLogText();
+            }
+            return true;
+        }
+        if (keyboard.ctrl && wParam == 'X')
+        {
+            if (engineLogOverlayInputFocused_)
+            {
+                std::string error;
+                if (engineLogOverlayInput_.cutSelectionToClipboard(parent_, &error))
+                {
+                    statusBar_.setText(L"Cut engine console selection.");
+                }
+            }
+            return true;
+        }
+        if (keyboard.ctrl && wParam == 'V')
+        {
+            if (engineLogOverlayInputFocused_)
+            {
+                std::string error;
+                if (engineLogOverlayInput_.pasteFromClipboard(parent_, &error))
+                {
+                    statusBar_.setText(L"Pasted into engine console.");
+                }
+            }
+            return true;
+        }
+
+        if (!engineLogOverlayInputFocused_)
+        {
+            return true;
+        }
+
+        const bool handled = engineLogOverlayInput_.onKeyDown(wParam, keyboard.ctrl, keyboard.shift);
+        if (handled && !keyboard.ctrl)
+        {
+            clearEngineLogTextSelection();
+        }
+        return handled;
+    }
+
+    void AceShellUi::renderAquariumViewportHudLayer(D2DRenderContext& ctx, UiRect viewportRect, const ace::aquarium_ui::AceAquariumUiSnapshot& snapshot)
+    {
+        if (!ctx.target || viewportRect.empty())
+        {
+            aquariumTelemetryOverlayRect_ = makeUiRect(0, 0, 0, 0);
+            return;
+        }
+
+        const UiRect avoidRect = engineLogOverlayVisible_ ? computeEngineLogOverlayRect(viewportRect) : makeUiRect(0, 0, 0, 0);
+        aquariumTelemetryOverlayRect_ = computeAquariumTelemetryOverlayRect(viewportRect, avoidRect);
+        if (aquariumTelemetryOverlayRect_.empty())
+        {
+            return;
+        }
+
+        aquariumTelemetryWidgets_.RenderPanel(ctx, aquariumTelemetryOverlayRect_, snapshot);
+    }
+
+    UiRect AceShellUi::computeAquariumTelemetryOverlayRect(UiRect viewportRect, UiRect avoidRect) const
+    {
+        if (viewportRect.empty())
+        {
+            return makeUiRect(0, 0, 0, 0);
+        }
+
+        constexpr float margin = 16.0f;
+        constexpr float minTopPad = 46.0f;
+        constexpr float panelHeight = 122.0f;
+        const float width = std::min(420.0f, std::max(310.0f, viewportRect.width() * 0.26f));
+        const float left = viewportRect.left + margin;
+        const float right = std::min(viewportRect.right - margin, left + width);
+
+        float bottom = viewportRect.bottom - margin;
+        const bool avoidOverlapsBottomHud = !avoidRect.empty() &&
+            avoidRect.left < right + 8.0f && avoidRect.right > left - 8.0f &&
+            avoidRect.bottom > viewportRect.top + minTopPad;
+        if (avoidOverlapsBottomHud)
+        {
+            bottom = std::min(bottom, avoidRect.top - 12.0f);
+        }
+
+        float top = bottom - panelHeight;
+        const float minTop = viewportRect.top + minTopPad;
+        if (top < minTop)
+        {
+            top = minTop;
+            bottom = top + panelHeight;
+        }
+
+        if (bottom > viewportRect.bottom - margin)
+        {
+            bottom = viewportRect.bottom - margin;
+            top = bottom - panelHeight;
+        }
+
+        if (right <= left + 80.0f || bottom <= top + 60.0f)
+        {
+            return makeUiRect(0, 0, 0, 0);
+        }
+
+        return makeUiRect(left, top, right, bottom);
+    }
+
+    UiRect AceShellUi::computeEngineLogOverlayRect(UiRect anchor) const
+    {
+        if (anchor.empty())
+        {
+            return makeUiRect(0.0f, 0.0f, 0.0f, 0.0f);
+        }
+
+        constexpr float margin = 16.0f;
+        const float overlayHeight = std::clamp(anchor.height() * 0.34f, 184.0f, 286.0f);
+        const float left = anchor.left + margin;
+        const float right = anchor.right - margin;
+        const float bottom = anchor.bottom - margin;
+        const float top = std::max(anchor.top + 58.0f, bottom - overlayHeight);
+        return makeUiRect(left, top, std::max(left + 420.0f, right), bottom);
+    }
+
+    UiRect AceShellUi::computeAquariumNativeViewportRect(UiRect logicalRect) const
+    {
+        // ACE-PERF0R2: do not solve UI-over-viewport by resizing/clipping a child
+        // HWND. UE's Slate path treats the viewport as a draw element inside the
+        // window element list, then paints children/overlays on higher layers.
+        // The legacy child HWND keeps its stable rect; overlay correctness is now
+        // handled by switching the 3D scene to the parent-composited viewport
+        // texture path when UI must be above it. Less z-order astrology, more sane
+        // architecture.
+        return logicalRect;
+    }
+
+    bool AceShellUi::isViewportLocalOverlayActive() const
+    {
+        if (!environmentOpen_ || !aquarium3DModeActive_)
+        {
+            return false;
+        }
+
+        return engineLogOverlayVisible_ ||
+            commandPalette_.active() ||
+            settingsOpen_ ||
+            diagnostics_.visible() ||
+            uiDebugOverlay_.Visible();
+    }
+
+    void AceShellUi::requestParentCompositedViewportHold(std::uint32_t frames, const wchar_t* reason)
+    {
+        if (frames == 0)
+        {
+            return;
+        }
+
+        aquariumParentCompositedHoldFrames_ = std::max(aquariumParentCompositedHoldFrames_, frames);
+        aquariumViewportLayerReason_ = reason && reason[0] ? reason : L"parent-composited-hold";
+    }
+
+    bool AceShellUi::shouldUseDirectCompositionForAquariumViewport() const
+    {
+        if (!aquariumUseSingleHwndCompositeViewport_ || !environmentOpen_ || !aquarium3DModeActive_)
+        {
+            return false;
+        }
+
+        if (windowLiveResizeActive_ || aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None || aquariumResizeQuarantineActive_)
+        {
+            return false;
+        }
+
+        // ACE-PERF2R1: visual quality guard.
+        // PERF2 proved that baking the viewport HUD/log console into GPU debug
+        // geometry removes readback, but it also throws away ACE's D2D/DWrite UI:
+        // real fonts, glass panels, scroll/input chrome, retained caches, and the
+        // whole reason this shell no longer looks like a bootloader from 1998.
+        //
+        // UE's important lesson is not "draw UI as scene triangles". It is:
+        // scene viewport and UI are separate ordered layers. Until ACE owns a true
+        // DComp/D2D GPU overlay visual for the entire shell, the production-quality
+        // path keeps Environment 3D parent-composited so D2D remains above the scene.
+        // Global parent overlays and viewport-local overlays therefore share the
+        // same retained D2D layer instead of using the PERF2 block-glyph fallback.
+        return false;
+    }
+
+    void AceShellUi::resetAquariumDirectCompositionIfActive()
+    {
+        if (!aquariumDirectCompositionActive_)
+        {
+            return;
+        }
+
+        if (aquariumGpuViewportRenderer_)
+        {
+            aquariumGpuViewportRenderer_->resetCompositionHost();
+        }
+        aquariumDirectCompositionActive_ = false;
+    }
+
+    bool AceShellUi::AquariumViewportCacheKey::operator==(const AquariumViewportCacheKey& other) const
+    {
+        return width == other.width &&
+            height == other.height &&
+            step == other.step &&
+            cameraX == other.cameraX &&
+            cameraY == other.cameraY &&
+            cameraZ == other.cameraZ &&
+            yaw == other.yaw &&
+            pitch == other.pitch &&
+            debugTruth == other.debugTruth &&
+            scenario == other.scenario;
+    }
+
+    AceShellUi::AquariumViewportCacheKey AceShellUi::makeAquariumViewportCacheKey(
+        am::renderer::rhi::U32 width,
+        am::renderer::rhi::U32 height,
+        bool debugTruth) const
+    {
+        auto quantize = [](float value, float scale) -> int
+        {
+            return static_cast<int>(std::lround(value * scale));
+        };
+
+        const auto pos = aquariumSingleHwndCamera_.Position();
+        AquariumViewportCacheKey key{};
+        key.width = width;
+        key.height = height;
+        key.step = aquariumController_.StepIndex();
+        key.cameraX = quantize(pos.x, 1000.0f);
+        key.cameraY = quantize(pos.y, 1000.0f);
+        key.cameraZ = quantize(pos.z, 1000.0f);
+        key.yaw = quantize(aquariumSingleHwndCamera_.Yaw(), 100000.0f);
+        key.pitch = quantize(aquariumSingleHwndCamera_.Pitch(), 100000.0f);
+        key.debugTruth = debugTruth;
+        key.scenario = aquariumController_.CurrentScenarioName();
+        return key;
+    }
+
+    bool AceShellUi::canReuseAquariumViewportBitmap(const AquariumViewportCacheKey& key) const
+    {
+        return aquariumViewportCacheKeyValid_ &&
+            aquariumSlateViewportBitmap_ &&
+            aquariumSlateViewportBitmapExtent_.width == key.width &&
+            aquariumSlateViewportBitmapExtent_.height == key.height &&
+            aquariumViewportCacheKey_ == key &&
+            !aquariumController_.IsRunning() &&
+            !windowLiveResizeActive_;
+    }
+
+    void AceShellUi::resetAquariumD2DTextureBridgeResourceObjects()
+    {
+        aquariumBridgeSharedBitmap_.Reset();
+        aquariumBridgeSurfaceBitmap_.Reset();
+        aquariumBridgeInteropSharedTexture_.Reset();
+        aquariumBridgeUiSharedTexture_.Reset();
+        for (auto& slot : aquariumBridgeSharedSlots_)
+        {
+            slot.surfaceBitmap.Reset();
+            slot.interopMutex.Reset();
+            slot.uiMutex.Reset();
+            slot.interopTexture.Reset();
+            slot.uiTexture.Reset();
+            // IDXGIResource::GetSharedHandle returns a legacy DXGI resource
+            // handle, not an NT handle. It is tied to the shared texture
+            // lifetime and must not be closed with CloseHandle. Tiny API
+            // landmine, naturally.
+            slot.sharedHandle = nullptr;
+            slot.ready = false;
+            slot.keyedMutex = false;
+        }
+        aquariumBridgeWrappedResource_.Reset();
+        // IDXGIResource::GetSharedHandle returns a legacy DXGI resource handle,
+        // not an NT handle. It is tied to the shared texture lifetime and must
+        // not be closed with CloseHandle. Tiny API landmine, naturally.
+        aquariumBridgeSharedHandle_ = nullptr;
+        aquariumBridgeNativeResource_ = nullptr;
+        aquariumBridgeBitmapExtent_ = {};
+        aquariumBridgeUsesSharedIntermediate_ = false;
+        aquariumBridgeSharedWriteIndex_ = 0;
+        aquariumBridgeSharedReadyIndex_ = 0;
+        aquariumBridgeSharedHasReadyFrame_ = false;
+        d2dViewportBridgeRuntime_.Reset();
+        d2dViewportCopyScheduler_.Reset();
+        d2dViewportTextureCache_.Reset();
+    }
+
+    void AceShellUi::resetAquariumD2DTextureBridge()
+    {
+        resetAquariumD2DTextureBridgeResourceObjects();
+        aquariumD2DBridgeSurfaceDiagnostics_.clear();
+        aquariumD2DBridgeDisabled_ = false;
+    }
+
+    void AceShellUi::setAquariumD2DBridgeFatalError(const std::string& error)
+    {
+        aquariumD2DBridgeLastError_ = error.empty() ? "D2D DeviceContext viewport bridge failed." : error;
+        aquariumD2DBridgeFatalStep_ = aquariumD2DBridgeLastError_;
+        aquariumD2DBridgeFatalHresult_.clear();
+
+        const std::string failedMarker = " failed.";
+        const std::size_t failedPos = aquariumD2DBridgeLastError_.find(failedMarker);
+        if (failedPos != std::string::npos)
+        {
+            aquariumD2DBridgeFatalStep_ = aquariumD2DBridgeLastError_.substr(0, failedPos);
+        }
+
+        const std::string hrMarker = "HRESULT=";
+        const std::size_t hrPos = aquariumD2DBridgeLastError_.find(hrMarker);
+        if (hrPos != std::string::npos)
+        {
+            aquariumD2DBridgeFatalHresult_ = aquariumD2DBridgeLastError_.substr(hrPos + hrMarker.size());
+        }
+    }
+
+    bool AceShellUi::ensureAquariumD2DInteropDevices(std::string* error)
+    {
+        // ACE-VTBRIDGE4: the UI target itself is now ID2D1DeviceContext-backed.
+        // This helper remains as a validator-stable interop checkpoint, but it no
+        // longer creates a second D2D context and no longer tries to share a bitmap
+        // back into a legacy ID2D1HwndRenderTarget. CreateSharedBitmap is a banned
+        // bridge endpoint here, not a fallback strategy wearing a fake mustache.
+        // VTBRIDGE3 probe breadcrumb only: __uuidof(ID2D1Bitmap),
+        // CreateSharedBitmap from D2D device-context bitmap, D3D11On12SharedBitmap.
+        if (!renderTarget_)
+        {
+            if (error) { *error = "D2D DeviceContext viewport bridge requires the modern UI DeviceContext target."; }
+            return false;
+        }
+        return true;
+    }
+
+    bool AceShellUi::ensureAquariumD2DTextureBridge(const am::renderer::rhi::AceViewportTextureResource& resource, std::string* error)
+    {
+        if (!renderTarget_ || !uiD3D11Device_ || !aquariumGpuViewportRenderer_ || !resource.nativeResource || resource.extent.width == 0 || resource.extent.height == 0)
+        {
+            if (error) { *error = "D2D DeviceContext viewport bridge requires live UI DeviceContext/D3D11 target and native DX12 viewport texture."; }
+            return false;
+        }
+
+        auto* d3d12Device = static_cast<ID3D12Device*>(aquariumGpuViewportRenderer_->nativeD3D12Device());
+        auto* d3d12Queue = static_cast<ID3D12CommandQueue*>(aquariumGpuViewportRenderer_->nativeD3D12GraphicsQueue());
+        auto* d3d12Resource = static_cast<ID3D12Resource*>(resource.nativeResource);
+        if (!d3d12Device || !d3d12Queue || !d3d12Resource)
+        {
+            if (error) { *error = "D2D DeviceContext viewport bridge missing native D3D12 device/queue/resource."; }
+            return false;
+        }
+
+        if (!aquariumBridgeD3D11On12_)
+        {
+            UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#if defined(_DEBUG)
+            flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+            IUnknown* queues[] = { static_cast<IUnknown*>(d3d12Queue) };
+            HRESULT hr = D3D11On12CreateDevice(
+                d3d12Device,
+                flags,
+                nullptr,
+                0,
+                queues,
+                1,
+                0,
+                aquariumBridgeD3D11Device_.GetAddressOf(),
+                aquariumBridgeD3D11Context_.GetAddressOf(),
+                nullptr);
+#if defined(_DEBUG)
+            if (FAILED(hr))
+            {
+                flags &= ~D3D11_CREATE_DEVICE_DEBUG;
+                hr = D3D11On12CreateDevice(
+                    d3d12Device,
+                    flags,
+                    nullptr,
+                    0,
+                    queues,
+                    1,
+                    0,
+                    aquariumBridgeD3D11Device_.GetAddressOf(),
+                    aquariumBridgeD3D11Context_.GetAddressOf(),
+                    nullptr);
+            }
+#endif
+            if (FAILED(hr) || !aquariumBridgeD3D11Device_)
+            {
+                if (error) { *error = hresultToString("D3D11On12CreateDevice viewport bridge", hr); }
+                aquariumBridgeD3D11Device_.Reset();
+                aquariumBridgeD3D11Context_.Reset();
+                aquariumBridgeD3D11On12_.Reset();
+                return false;
+            }
+
+            hr = aquariumBridgeD3D11Device_.As(&aquariumBridgeD3D11On12_);
+            if (FAILED(hr) || !aquariumBridgeD3D11On12_)
+            {
+                if (error) { *error = hresultToString("Query ID3D11On12Device viewport bridge", hr); }
+                aquariumBridgeD3D11Device_.Reset();
+                aquariumBridgeD3D11Context_.Reset();
+                aquariumBridgeD3D11On12_.Reset();
+                return false;
+            }
+        }
+
+        if (!ensureAquariumD2DInteropDevices(error))
+        {
+            return false;
+        }
+
+        const bool resourceChanged = aquariumBridgeNativeResource_ != resource.nativeResource ||
+            aquariumBridgeBitmapExtent_.width != resource.extent.width ||
+            aquariumBridgeBitmapExtent_.height != resource.extent.height ||
+            !aquariumBridgeWrappedResource_ ||
+            !aquariumBridgeSurfaceBitmap_;
+        if (!resourceChanged)
+        {
+            return true;
+        }
+
+        resetAquariumD2DTextureBridgeResourceObjects();
+
+        std::ostringstream diagnostics;
+        diagnostics << "vtbridge4r1";
+        const D3D12_RESOURCE_DESC d3d12Desc = d3d12Resource->GetDesc();
+        diagnostics << ";" << aceD3D12ResourceDescText(d3d12Desc);
+
+        D3D11_RESOURCE_FLAGS wrappedFlags{};
+        wrappedFlags.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        HRESULT hr = aquariumBridgeD3D11On12_->CreateWrappedResource(
+            d3d12Resource,
+            &wrappedFlags,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            IID_PPV_ARGS(aquariumBridgeWrappedResource_.GetAddressOf()));
+        if (FAILED(hr) || !aquariumBridgeWrappedResource_)
+        {
+            diagnostics << ";wrap=" << hresultToString("CreateWrappedResource viewport bridge", hr);
+            aquariumD2DBridgeSurfaceDiagnostics_ = diagnostics.str();
+            if (error) { *error = diagnostics.str(); }
+            resetAquariumD2DTextureBridgeResourceObjects();
+            return false;
+        }
+
+        Microsoft::WRL::ComPtr<IDXGISurface> directSurface;
+        hr = aquariumBridgeWrappedResource_.As(&directSurface);
+        if (FAILED(hr) || !directSurface)
+        {
+            diagnostics << ";direct_surface=" << hresultToString("Query IDXGISurface viewport bridge", hr);
+            aquariumD2DBridgeSurfaceDiagnostics_ = diagnostics.str();
+            if (error) { *error = diagnostics.str(); }
+            resetAquariumD2DTextureBridgeResourceObjects();
+            return false;
+        }
+
+        DXGI_SURFACE_DESC directSurfaceDesc{};
+        hr = directSurface->GetDesc(&directSurfaceDesc);
+        if (SUCCEEDED(hr))
+        {
+            diagnostics << ";" << aceDxgiSurfaceDescText(directSurfaceDesc);
+        }
+        else
+        {
+            diagnostics << ";direct_getdesc=" << hresultToString("IDXGISurface::GetDesc viewport bridge", hr);
+        }
+
+        // ACE-VTBRIDGE4 validator breadcrumb: ID2D1DeviceContext::CreateBitmapFromDxgiSurface viewport bridge.
+        auto tryCreateD2DBitmap = [&](IDXGISurface* surface, const D2D1_BITMAP_PROPERTIES1& props, const char* label, Microsoft::WRL::ComPtr<ID2D1Bitmap1>& outBitmap) -> HRESULT
+        {
+            outBitmap.Reset();
+            const HRESULT bitmapHr = renderTarget_->CreateBitmapFromDxgiSurface(surface, &props, outBitmap.GetAddressOf());
+            diagnostics << ";" << label << "=0x" << std::hex << static_cast<unsigned long>(bitmapHr) << std::dec;
+            if (SUCCEEDED(bitmapHr) && outBitmap)
+            {
+                diagnostics << "(ok)";
+            }
+            return bitmapHr;
+        };
+
+        Microsoft::WRL::ComPtr<ID2D1Bitmap1> directBitmap;
+        const D2D1_BITMAP_PROPERTIES1 directPropsExact = D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_NONE,
+            D2D1::PixelFormat(directSurfaceDesc.Format == DXGI_FORMAT_UNKNOWN ? DXGI_FORMAT_B8G8R8A8_UNORM : directSurfaceDesc.Format, D2D1_ALPHA_MODE_IGNORE),
+            96.0f,
+            96.0f);
+        hr = tryCreateD2DBitmap(directSurface.Get(), directPropsExact, "direct_exact_ignore", directBitmap);
+        if (FAILED(hr))
+        {
+            const D2D1_BITMAP_PROPERTIES1 directPropsUnknown = D2D1::BitmapProperties1(
+                D2D1_BITMAP_OPTIONS_NONE,
+                D2D1::PixelFormat(DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_IGNORE),
+                96.0f,
+                96.0f);
+            hr = tryCreateD2DBitmap(directSurface.Get(), directPropsUnknown, "direct_unknown_ignore", directBitmap);
+        }
+        if (FAILED(hr))
+        {
+            const D2D1_BITMAP_PROPERTIES1 directPropsPremul = D2D1::BitmapProperties1(
+                D2D1_BITMAP_OPTIONS_NONE,
+                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+                96.0f,
+                96.0f);
+            hr = tryCreateD2DBitmap(directSurface.Get(), directPropsPremul, "direct_bgra_premul", directBitmap);
+        }
+        if (SUCCEEDED(hr) && directBitmap)
+        {
+            aquariumBridgeSurfaceBitmap_ = directBitmap;
+            aquariumBridgeNativeResource_ = resource.nativeResource;
+            aquariumBridgeBitmapExtent_ = resource.extent;
+            aquariumBridgeUsesSharedIntermediate_ = false;
+            aquariumD2DBridgeSurfaceDiagnostics_ = diagnostics.str() + ";selected=direct_wrapped_surface";
+            return true;
+        }
+
+        // ACE-VTBRIDGE5: Direct2D refused the D3D11On12 wrapped DXGI surface.
+        // Keep the R1 GPU-only shared D3D11 intermediate, but stop treating keyed
+        // mutex handoff as the default fix. The frame compositor now redraws the
+        // whole flip-model backbuffer, so the stable path is a double-buffered
+        // last-good shared texture copied on the interop device and sampled on
+        // the UI device in the next complete frame, matching the Slate rule that
+        // a viewport is just another draw element inside one coherent frame.
+        AceD2DViewportBridgePolicyInput bridgePolicyInput{};
+        bridgePolicyInput.width = static_cast<std::uint32_t>(resource.extent.width);
+        bridgePolicyInput.height = static_cast<std::uint32_t>(resource.extent.height);
+        bridgePolicyInput.format = directSurfaceDesc.Format == DXGI_FORMAT_UNKNOWN ? DXGI_FORMAT_B8G8R8A8_UNORM : directSurfaceDesc.Format;
+        bridgePolicyInput.flipModelSwapChain = uiSwapChain_ != nullptr;
+        bridgePolicyInput.fullFrameRedraw = d2dFrameCompositor_.RequiresFullFrameRedraw();
+        bridgePolicyInput.localOverlayActive = isViewportLocalOverlayActive();
+        bridgePolicyInput.liveResize = windowLiveResizeActive_ || aquariumResizeQuarantineActive_;
+        bridgePolicyInput.directSurfaceRejected = true;
+        bridgePolicyInput.frameNumber = d2dFrameCompositor_.Stats().frameNumber;
+        bridgePolicyInput.previousContentionCount = aquariumD2DBridgeSharedMutexContentionCount_;
+        const AceD2DViewportBridgePolicyDecision bridgeDecision = d2dViewportBridgePolicy_.Decide(bridgePolicyInput);
+        diagnostics << ";" << bridgeDecision.reason;
+
+        D3D11_TEXTURE2D_DESC sharedDesc{};
+        sharedDesc.Width = std::max<UINT>(1u, static_cast<UINT>(resource.extent.width));
+        sharedDesc.Height = std::max<UINT>(1u, static_cast<UINT>(resource.extent.height));
+        sharedDesc.MipLevels = 1;
+        sharedDesc.ArraySize = 1;
+        sharedDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        sharedDesc.SampleDesc.Count = 1;
+        sharedDesc.SampleDesc.Quality = 0;
+        sharedDesc.Usage = D3D11_USAGE_DEFAULT;
+        sharedDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        sharedDesc.CPUAccessFlags = 0;
+        sharedDesc.MiscFlags = bridgeDecision.miscFlag;
+        diagnostics << ";intermediate_desc=" << aceTexture2DDescText(sharedDesc)
+            << ";shared_buffer_count=" << kAquariumD2DSharedBridgeSlotCount;
+
+        auto createSharedSlot = [&](std::size_t slotIndex, bool keyedMutex) -> HRESULT
+        {
+            auto& slot = aquariumBridgeSharedSlots_[slotIndex];
+            slot = AquariumD2DSharedBridgeSlot{};
+
+            D3D11_TEXTURE2D_DESC slotDesc = sharedDesc;
+            slotDesc.MiscFlags = keyedMutex ? D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX : D3D11_RESOURCE_MISC_SHARED;
+
+            HRESULT slotHr = uiD3D11Device_->CreateTexture2D(&slotDesc, nullptr, slot.uiTexture.GetAddressOf());
+            if (FAILED(slotHr) || !slot.uiTexture)
+            {
+                diagnostics << ";slot" << slotIndex << "_ui_shared_create="
+                    << hresultToString("ID3D11Device::CreateTexture2D UI shared viewport bridge", slotHr);
+                return slotHr;
+            }
+
+            Microsoft::WRL::ComPtr<IDXGIResource> uiDxgiResource;
+            slotHr = slot.uiTexture.As(&uiDxgiResource);
+            if (FAILED(slotHr) || !uiDxgiResource)
+            {
+                diagnostics << ";slot" << slotIndex << "_ui_shared_query_dxgi="
+                    << hresultToString("Query IDXGIResource UI shared viewport bridge", slotHr);
+                return slotHr;
+            }
+
+            slotHr = uiDxgiResource->GetSharedHandle(&slot.sharedHandle);
+            if (FAILED(slotHr) || !slot.sharedHandle)
+            {
+                diagnostics << ";slot" << slotIndex << "_ui_shared_handle="
+                    << hresultToString("IDXGIResource::GetSharedHandle viewport bridge", slotHr);
+                return slotHr;
+            }
+
+            slotHr = aquariumBridgeD3D11Device_->OpenSharedResource(
+                slot.sharedHandle,
+                IID_PPV_ARGS(slot.interopTexture.GetAddressOf()));
+            if (FAILED(slotHr) || !slot.interopTexture)
+            {
+                diagnostics << ";slot" << slotIndex << "_interop_open_shared="
+                    << hresultToString("ID3D11Device::OpenSharedResource viewport bridge", slotHr);
+                return slotHr;
+            }
+
+            if (keyedMutex)
+            {
+                const HRESULT uiMutexHr = slot.uiTexture.As(&slot.uiMutex);
+                const HRESULT interopMutexHr = slot.interopTexture.As(&slot.interopMutex);
+                slot.keyedMutex = SUCCEEDED(uiMutexHr) && slot.uiMutex && SUCCEEDED(interopMutexHr) && slot.interopMutex;
+                diagnostics << ";slot" << slotIndex << "_keyed_mutex="
+                    << (slot.keyedMutex ? "ok" : "unavailable")
+                    << "(ui=0x" << std::hex << static_cast<unsigned long>(uiMutexHr)
+                    << ",interop=0x" << static_cast<unsigned long>(interopMutexHr) << std::dec << ")";
+            }
+            else
+            {
+                slot.keyedMutex = false;
+                diagnostics << ";slot" << slotIndex << "_keyed_mutex=disabled";
+            }
+
+            Microsoft::WRL::ComPtr<IDXGISurface> uiSurface;
+            slotHr = slot.uiTexture.As(&uiSurface);
+            if (FAILED(slotHr) || !uiSurface)
+            {
+                diagnostics << ";slot" << slotIndex << "_ui_shared_surface="
+                    << hresultToString("Query IDXGISurface UI shared viewport bridge", slotHr);
+                return slotHr;
+            }
+
+            if (slotIndex == 0)
+            {
+                DXGI_SURFACE_DESC uiSurfaceDesc{};
+                const HRESULT descHr = uiSurface->GetDesc(&uiSurfaceDesc);
+                if (SUCCEEDED(descHr))
+                {
+                    diagnostics << ";ui_" << aceDxgiSurfaceDescText(uiSurfaceDesc);
+                }
+                else
+                {
+                    diagnostics << ";ui_getdesc=" << hresultToString("IDXGISurface::GetDesc UI shared viewport bridge", descHr);
+                }
+            }
+
+            const D2D1_BITMAP_PROPERTIES1 uiSurfaceProps = D2D1::BitmapProperties1(
+                D2D1_BITMAP_OPTIONS_NONE,
+                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+                96.0f,
+                96.0f);
+            slotHr = tryCreateD2DBitmap(uiSurface.Get(), uiSurfaceProps,
+                slotIndex == 0 ? "ui_shared_bgra_ignore" : "ui_shared_bgra_ignore_slot", slot.surfaceBitmap);
+            if (FAILED(slotHr) || !slot.surfaceBitmap)
+            {
+                const D2D1_BITMAP_PROPERTIES1 uiSurfaceUnknownProps = D2D1::BitmapProperties1(
+                    D2D1_BITMAP_OPTIONS_NONE,
+                    D2D1::PixelFormat(DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_IGNORE),
+                    96.0f,
+                    96.0f);
+                slotHr = tryCreateD2DBitmap(uiSurface.Get(), uiSurfaceUnknownProps,
+                    slotIndex == 0 ? "ui_shared_unknown_ignore" : "ui_shared_unknown_ignore_slot", slot.surfaceBitmap);
+            }
+            if (FAILED(slotHr) || !slot.surfaceBitmap)
+            {
+                diagnostics << ";slot" << slotIndex << "_bitmap=failed";
+                return slotHr;
+            }
+
+            slot.ready = false;
+            return S_OK;
+        };
+
+        bool slotsReady = true;
+        bool keyedSlots = bridgeDecision.allowKeyedMutex;
+        for (std::size_t i = 0; i < kAquariumD2DSharedBridgeSlotCount; ++i)
+        {
+            hr = createSharedSlot(i, bridgeDecision.allowKeyedMutex);
+            if (FAILED(hr))
+            {
+                slotsReady = false;
+                break;
+            }
+            keyedSlots = keyedSlots && aquariumBridgeSharedSlots_[i].keyedMutex;
+        }
+
+        if ((FAILED(hr) || !slotsReady || (bridgeDecision.allowKeyedMutex && !keyedSlots)) && bridgeDecision.allowKeyedMutex)
+        {
+            for (auto& slot : aquariumBridgeSharedSlots_)
+            {
+                slot = AquariumD2DSharedBridgeSlot{};
+            }
+            sharedDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+            diagnostics << ";keyed_mutex_experimental_failed_try_flush_only_ring=1";
+            slotsReady = true;
+            keyedSlots = false;
+            for (std::size_t i = 0; i < kAquariumD2DSharedBridgeSlotCount; ++i)
+            {
+                hr = createSharedSlot(i, false);
+                if (FAILED(hr))
+                {
+                    slotsReady = false;
+                    break;
+                }
+            }
+        }
+
+        if (FAILED(hr) || !slotsReady)
+        {
+            diagnostics << ";selected=failed";
+            aquariumD2DBridgeSurfaceDiagnostics_ = diagnostics.str();
+            d2dViewportBridgePolicy_.RecordFailure(bridgeDecision, hr);
+            if (error)
+            {
+                *error = hresultToString("Create shared D3D11 texture ring for D2D viewport bridge", hr) +
+                    " diagnostics=" + aquariumD2DBridgeSurfaceDiagnostics_;
+            }
+            resetAquariumD2DTextureBridgeResourceObjects();
+            return false;
+        }
+
+        aquariumBridgeUiSharedTexture_ = aquariumBridgeSharedSlots_[0].uiTexture;
+        aquariumBridgeInteropSharedTexture_ = aquariumBridgeSharedSlots_[0].interopTexture;
+        aquariumBridgeSurfaceBitmap_ = aquariumBridgeSharedSlots_[0].surfaceBitmap;
+        aquariumBridgeSharedHandle_ = aquariumBridgeSharedSlots_[0].sharedHandle;
+        aquariumBridgeNativeResource_ = resource.nativeResource;
+        aquariumBridgeBitmapExtent_ = resource.extent;
+        aquariumBridgeUsesSharedIntermediate_ = true;
+        aquariumBridgeSharedWriteIndex_ = 0;
+        aquariumBridgeSharedReadyIndex_ = 0;
+        aquariumBridgeSharedHasReadyFrame_ = false;
+        ++aquariumD2DBridgeSharedBitmapRecreateCount_;
+        aquariumD2DBridgeSharedBufferCount_ = kAquariumD2DSharedBridgeSlotCount;
+        d2dViewportBridgePolicy_.RecordSuccess(bridgeDecision);
+        aquariumD2DBridgeSurfaceDiagnostics_ = diagnostics.str() +
+            ";selected=" + bridgeDecision.selectedPath +
+            (keyedSlots ? ";keyed_mutex=experimental_active" : ";keyed_mutex=disabled_default") +
+            ";bridge_policy=" + d2dViewportBridgePolicy_.Diagnostics();
+        return true;
+    }
+
+    bool AceShellUi::drawAquariumGpuTextureWithD2DDeviceContext(
+        D2DRenderContext& ctx,
+        UiRect rect,
+        const am::renderer::scene::AceAquariumGpuViewportSnapshot& snapshot,
+        const AquariumViewportCacheKey& key,
+        std::string* error)
+    {
+        ++aquariumD2DBridgeAttemptCount_;
+        if (!ctx.target || rect.empty() || !snapshot.valid || !snapshot.d2dTextureBridgeReady)
+        {
+            if (error) { *error = "D2D DeviceContext bridge draw requires a valid GPU-texture snapshot."; }
+            return false;
+        }
+        if (!ensureAquariumD2DTextureBridge(snapshot.viewportTexture, error))
+        {
+            if (error && !error->empty()) { setAquariumD2DBridgeFatalError(*error); }
+            return false;
+        }
+
+        ID3D11Resource* wrapped[] = { aquariumBridgeWrappedResource_.Get() };
+        if (aquariumBridgeD3D11On12_ && wrapped[0])
+        {
+            aquariumBridgeD3D11On12_->AcquireWrappedResources(wrapped, 1);
+        }
+
+        ID2D1Bitmap1* bitmapToDraw = aquariumBridgeSurfaceBitmap_.Get();
+        bool sharedDraw = false;
+        bool sharedKeyed = false;
+        std::size_t writeIndex = aquariumBridgeSharedWriteIndex_ % kAquariumD2DSharedBridgeSlotCount;
+        std::size_t drawIndex = aquariumBridgeSharedHasReadyFrame_ ?
+            (aquariumBridgeSharedReadyIndex_ % kAquariumD2DSharedBridgeSlotCount) : writeIndex;
+        AceD2DViewportBridgeFrameDecision bridgeRuntimeDecision{};
+        AceD2DViewportCopySchedule bridgeCopySchedule{};
+        const AceD2DViewportTextureKey textureCacheKey = AceD2DViewportTextureKeyFromResource(
+            snapshot.viewportTexture,
+            static_cast<std::uint32_t>(DXGI_FORMAT_B8G8R8A8_UNORM),
+            aquariumD2DBridgeSharedBitmapRecreateCount_,
+            aquariumD2DBridgeSharedBitmapRecreateCount_);
+
+        if (aquariumBridgeUsesSharedIntermediate_)
+        {
+            if (!aquariumBridgeD3D11Context_ || kAquariumD2DSharedBridgeSlotCount == 0)
+            {
+                if (aquariumBridgeD3D11On12_ && wrapped[0])
+                {
+                    aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+                }
+                if (error) { *error = "D2D DeviceContext shared intermediate bridge missing D3D11 copy context."; }
+                return false;
+            }
+
+            AceD2DViewportBridgeFrameInput bridgeRuntimeInput{};
+            bridgeRuntimeInput.frameNumber = d2dFrameCompositor_.Stats().frameNumber;
+            bridgeRuntimeInput.resourceEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+            bridgeRuntimeInput.width = snapshot.viewportTexture.extent.width;
+            bridgeRuntimeInput.height = snapshot.viewportTexture.extent.height;
+            bridgeRuntimeInput.fullFrameRedraw = d2dFrameCompositor_.RequiresFullFrameRedraw();
+            bridgeRuntimeInput.liveResize = windowLiveResizeActive_ || aquariumResizeQuarantineActive_;
+            bridgeRuntimeInput.bridgeUsesSharedIntermediate = true;
+            bridgeRuntimeInput.keyedMutexEnabled = false;
+            bridgeRuntimeInput.firstFrameMayUseSameSlot = true;
+            bridgeRuntimeInput.slotCount = static_cast<std::uint32_t>(kAquariumD2DSharedBridgeSlotCount);
+            bridgeRuntimeDecision = d2dViewportBridgeRuntime_.BeginFrame(bridgeRuntimeInput);
+            if (bridgeRuntimeDecision.valid)
+            {
+                writeIndex = bridgeRuntimeDecision.writeSlot % kAquariumD2DSharedBridgeSlotCount;
+                drawIndex = bridgeRuntimeDecision.drawSlot % kAquariumD2DSharedBridgeSlotCount;
+            }
+            AceD2DViewportCopyScheduleInput copyScheduleInput{};
+            copyScheduleInput.bridgeDecision = bridgeRuntimeDecision;
+            copyScheduleInput.textureKey = textureCacheKey;
+            copyScheduleInput.fullFrame = d2dFrameCompositor_.RequiresFullFrameRedraw();
+            copyScheduleInput.liveResize = windowLiveResizeActive_ || aquariumResizeQuarantineActive_;
+            copyScheduleInput.allowOneFrameLatency = true;
+            copyScheduleInput.keyedMutexEnabled = false;
+            copyScheduleInput.frameNumber = d2dFrameCompositor_.Stats().frameNumber;
+            copyScheduleInput.resizeEpoch = aquariumD2DBridgeSharedBitmapRecreateCount_;
+            bridgeCopySchedule = d2dViewportCopyScheduler_.BuildSchedule(copyScheduleInput);
+
+            auto* writeSlot = &aquariumBridgeSharedSlots_[writeIndex];
+            if (!writeSlot->interopTexture || !writeSlot->surfaceBitmap)
+            {
+                if (aquariumBridgeD3D11On12_ && wrapped[0])
+                {
+                    aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+                }
+                if (error) { *error = "D2D DeviceContext shared intermediate bridge missing ring-buffer slot."; }
+                return false;
+            }
+
+            sharedKeyed = writeSlot->keyedMutex && writeSlot->interopMutex && writeSlot->uiMutex;
+            bool writerMutexHeld = false;
+            if (sharedKeyed)
+            {
+                const HRESULT acquireHr = writeSlot->interopMutex->AcquireSync(0, 2);
+                ++aquariumD2DBridgeSharedMutexAcquireCount_;
+                if (acquireHr == WAIT_TIMEOUT)
+                {
+                    ++aquariumD2DBridgeSharedMutexContentionCount_;
+                    const std::size_t alternateIndex = (writeIndex + 1) % kAquariumD2DSharedBridgeSlotCount;
+                    auto* alternateSlot = &aquariumBridgeSharedSlots_[alternateIndex];
+                    if (alternateSlot->keyedMutex && alternateSlot->interopMutex && alternateSlot->uiMutex && alternateSlot->interopTexture && alternateSlot->surfaceBitmap)
+                    {
+                        const HRESULT alternateAcquireHr = alternateSlot->interopMutex->AcquireSync(0, 2);
+                        ++aquariumD2DBridgeSharedMutexAcquireCount_;
+                        if (SUCCEEDED(alternateAcquireHr))
+                        {
+                            writeIndex = alternateIndex;
+                            writeSlot = alternateSlot;
+                            writerMutexHeld = true;
+                        }
+                        else
+                        {
+                            if (aquariumBridgeD3D11On12_ && wrapped[0])
+                            {
+                                aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+                            }
+                            if (error) { *error = hresultToString("IDXGIKeyedMutex::AcquireSync D2D shared viewport bridge", alternateAcquireHr); }
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (aquariumBridgeD3D11On12_ && wrapped[0])
+                        {
+                            aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+                        }
+                        if (error) { *error = hresultToString("IDXGIKeyedMutex::AcquireSync D2D shared viewport bridge", acquireHr); }
+                        return false;
+                    }
+                }
+                else if (FAILED(acquireHr))
+                {
+                    if (aquariumBridgeD3D11On12_ && wrapped[0])
+                    {
+                        aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+                    }
+                    if (error) { *error = hresultToString("IDXGIKeyedMutex::AcquireSync D2D shared viewport bridge", acquireHr); }
+                    return false;
+                }
+                else
+                {
+                    writerMutexHeld = true;
+                }
+            }
+
+            d2dViewportBridgeRuntime_.MarkCopyStarted(writeIndex);
+            aquariumBridgeD3D11Context_->CopyResource(writeSlot->interopTexture.Get(), aquariumBridgeWrappedResource_.Get());
+            d2dViewportBridgeRuntime_.MarkCopyCompleted(writeIndex);
+            ++aquariumD2DBridgeSharedCopyCount_;
+
+            if (aquariumBridgeD3D11On12_ && wrapped[0])
+            {
+                aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+                wrapped[0] = nullptr;
+            }
+            aquariumBridgeD3D11Context_->Flush();
+
+            if (writerMutexHeld && writeSlot->interopMutex)
+            {
+                const HRESULT releaseHr = writeSlot->interopMutex->ReleaseSync(1);
+                if (FAILED(releaseHr))
+                {
+                    if (error) { *error = hresultToString("IDXGIKeyedMutex::ReleaseSync D2D shared viewport bridge", releaseHr); }
+                    return false;
+                }
+            }
+
+            writeSlot->ready = true;
+            // Keyed slots are synchronized as a write-then-read handoff in the
+            // same frame: writer releases key 1, UI acquires key 1, D2D draws,
+            // then UI releases key 0 for the next writer. Non-keyed slots keep
+            // the one-frame-late ring path so D2D does not sample the texture
+            // being updated by CopyResource this frame.
+            if (sharedKeyed || (!aquariumBridgeSharedHasReadyFrame_ && !bridgeRuntimeDecision.valid))
+            {
+                drawIndex = writeIndex;
+            }
+            auto* drawSlot = &aquariumBridgeSharedSlots_[drawIndex];
+            if (!drawSlot->ready || !drawSlot->surfaceBitmap)
+            {
+                drawIndex = writeIndex;
+                drawSlot = writeSlot;
+            }
+
+            bool readerMutexHeld = false;
+            if (drawSlot->keyedMutex && drawSlot->uiMutex)
+            {
+                const HRESULT readAcquireHr = drawSlot->uiMutex->AcquireSync(1, 2);
+                ++aquariumD2DBridgeSharedMutexAcquireCount_;
+                if (readAcquireHr == WAIT_TIMEOUT)
+                {
+                    ++aquariumD2DBridgeSharedMutexContentionCount_;
+                    if (error) { *error = hresultToString("IDXGIKeyedMutex::AcquireSync UI D2D shared viewport bridge", readAcquireHr); }
+                    return false;
+                }
+                if (FAILED(readAcquireHr))
+                {
+                    if (error) { *error = hresultToString("IDXGIKeyedMutex::AcquireSync UI D2D shared viewport bridge", readAcquireHr); }
+                    return false;
+                }
+                readerMutexHeld = true;
+            }
+
+            bitmapToDraw = drawSlot->surfaceBitmap.Get();
+            aquariumBridgeUiSharedTexture_ = drawSlot->uiTexture;
+            aquariumBridgeInteropSharedTexture_ = writeSlot->interopTexture;
+            aquariumBridgeSurfaceBitmap_ = drawSlot->surfaceBitmap;
+            aquariumBridgeSharedHandle_ = drawSlot->sharedHandle;
+            aquariumBridgeSharedWriteIndex_ = (writeIndex + 1) % kAquariumD2DSharedBridgeSlotCount;
+            aquariumBridgeSharedReadyIndex_ = writeIndex;
+            aquariumBridgeSharedHasReadyFrame_ = !sharedKeyed;
+            if (sharedKeyed)
+            {
+                writeSlot->ready = false;
+            }
+            aquariumD2DBridgeSharedWriteIndexStat_ = static_cast<std::uint64_t>(writeIndex);
+            aquariumD2DBridgeSharedDrawIndexStat_ = static_cast<std::uint64_t>(drawIndex);
+            sharedDraw = true;
+
+            if (!bitmapToDraw)
+            {
+                if (readerMutexHeld && drawSlot->uiMutex)
+                {
+                    drawSlot->uiMutex->ReleaseSync(0);
+                }
+                if (error) { *error = "D2D DeviceContext shared intermediate bridge has no bitmap to draw."; }
+                return false;
+            }
+
+            d2dViewportBridgeRuntime_.MarkDrawStarted(drawIndex);
+            ctx.target->DrawBitmap(
+                bitmapToDraw,
+                rect.d2d(),
+                1.0f,
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+            d2dViewportBridgeRuntime_.MarkDrawCompleted(drawIndex);
+
+            if (readerMutexHeld && drawSlot->uiMutex)
+            {
+                D2D1_TAG tag1 = 0;
+                D2D1_TAG tag2 = 0;
+                const HRESULT flushHr = ctx.target->Flush(&tag1, &tag2);
+                ++aquariumD2DBridgeSharedD2DFlushCount_;
+                const HRESULT releaseHr = drawSlot->uiMutex->ReleaseSync(0);
+                if (FAILED(flushHr))
+                {
+                    if (error) { *error = hresultToString("ID2D1DeviceContext::Flush D2D shared viewport bridge", flushHr); }
+                    return false;
+                }
+                if (FAILED(releaseHr))
+                {
+                    if (error) { *error = hresultToString("IDXGIKeyedMutex::ReleaseSync UI D2D shared viewport bridge", releaseHr); }
+                    return false;
+                }
+            }
+        }
+
+        if (aquariumBridgeD3D11On12_ && wrapped[0])
+        {
+            aquariumBridgeD3D11On12_->ReleaseWrappedResources(wrapped, 1);
+        }
+        if (aquariumBridgeD3D11Context_ && !aquariumBridgeUsesSharedIntermediate_)
+        {
+            aquariumBridgeD3D11Context_->Flush();
+        }
+
+        if (!sharedDraw)
+        {
+            if (!bitmapToDraw)
+            {
+                if (error) { *error = "D2D DeviceContext bridge has no bitmap to draw."; }
+                return false;
+            }
+            ctx.target->DrawBitmap(
+                bitmapToDraw,
+                rect.d2d(),
+                1.0f,
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        }
+
+        if (aquariumBridgeUsesSharedIntermediate_)
+        {
+            d2dViewportCopyScheduler_.RecordExecuted(bridgeCopySchedule, true, true);
+            d2dViewportTextureCache_.RecordSharedTextureAccepted(textureCacheKey, d2dViewportBridgeRuntime_.Diagnostics());
+        }
+        d2dFrameDiagnostics_.RecordViewportDraw(true, aquariumD2DBridgeSharedBitmapRecreateCount_);
+
+        aquariumViewportCacheKey_ = key;
+        aquariumViewportCacheKeyValid_ = false;
+        aquariumD2DBridgeLastError_.clear();
+        aquariumD2DBridgeFatalStep_.clear();
+        aquariumD2DBridgeFatalHresult_.clear();
+        aquariumD2DBridgeDisabled_ = false;
+        ++aquariumD2DBridgeSuccessCount_;
+        if (aquariumBridgeUsesSharedIntermediate_)
+        {
+            ++aquariumD2DBridgeSharedSuccessCount_;
+        }
+        else
+        {
+            ++aquariumD2DBridgeDirectSuccessCount_;
+        }
+        return true;
+    }
+
+    bool AceShellUi::drawCachedAquariumSlateViewportElement(D2DRenderContext& ctx, UiRect rect, const AquariumViewportCacheKey& key)
+    {
+        if (!ctx.target || rect.empty() || !canReuseAquariumViewportBitmap(key))
+        {
+            return false;
+        }
+
+        ctx.target->DrawBitmap(
+            aquariumSlateViewportBitmap_.Get(),
+            rect.d2d(),
+            1.0f,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        ++aquariumViewportCacheHitCount_;
+        return true;
+    }
+
+    bool AceShellUi::drawAquariumGpuSnapshotAsSlateViewportElement(
+        D2DRenderContext& ctx,
+        UiRect rect,
+        const am::renderer::scene::AceAquariumGpuViewportSnapshot& snapshot,
+        const AquariumViewportCacheKey& key,
+        std::string* error)
+    {
+        if (!ctx.target || rect.empty() || snapshot.bgraPixels.empty() || snapshot.extent.width == 0 || snapshot.extent.height == 0)
+        {
+            if (error) { *error = "Slate-style viewport texture draw requires a valid BGRA snapshot."; }
+            return false;
+        }
+
+        const UINT32 width = static_cast<UINT32>(snapshot.extent.width);
+        const UINT32 height = static_cast<UINT32>(snapshot.extent.height);
+        const UINT32 pitch = width * 4u;
+        const bool extentChanged =
+            !aquariumSlateViewportBitmap_ ||
+            aquariumSlateViewportBitmapExtent_.width != snapshot.extent.width ||
+            aquariumSlateViewportBitmapExtent_.height != snapshot.extent.height;
+
+        if (extentChanged)
+        {
+            aquariumSlateViewportBitmap_.Reset();
+            aquariumSlateViewportBitmapExtent_ = {};
+
+            const D2D1_BITMAP_PROPERTIES props = D2D1::BitmapProperties(
+                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+                static_cast<FLOAT>(ctx.dpiX),
+                static_cast<FLOAT>(ctx.dpiY));
+
+            const HRESULT hr = ctx.target->CreateBitmap(
+                D2D1::SizeU(width, height),
+                snapshot.bgraPixels.data(),
+                pitch,
+                props,
+                aquariumSlateViewportBitmap_.GetAddressOf());
+
+            if (FAILED(hr) || !aquariumSlateViewportBitmap_)
+            {
+                if (error) { *error = hresultToString("CreateBitmap viewport element", hr); }
+                return false;
+            }
+
+            aquariumSlateViewportBitmapExtent_ = snapshot.extent;
+        }
+        else
+        {
+            const HRESULT hr = aquariumSlateViewportBitmap_->CopyFromMemory(nullptr, snapshot.bgraPixels.data(), pitch);
+            if (FAILED(hr))
+            {
+                aquariumSlateViewportBitmap_.Reset();
+                aquariumSlateViewportBitmapExtent_ = {};
+                if (error) { *error = hresultToString("CopyFromMemory viewport element", hr); }
+                return false;
+            }
+            ++aquariumSlateViewportBitmapReuseCount_;
+        }
+
+        ctx.target->DrawBitmap(
+            aquariumSlateViewportBitmap_.Get(),
+            rect.d2d(),
+            1.0f,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        aquariumViewportCacheKey_ = key;
+        aquariumViewportCacheKeyValid_ = true;
+        ++aquariumViewportCacheMissCount_;
+        return true;
+    }
+
+    void AceShellUi::renderEngineLogOverlay(D2DRenderContext& ctx)
+    {
+        if (!engineLogOverlayVisible_ || !ctx.target)
+        {
+            return;
+        }
+
+        UiRect anchor = mainRect_;
+        if (environmentOpen_ && aquarium3DModeActive_ && !aquariumEmbeddedViewportRect_.empty())
+        {
+            anchor = aquariumEmbeddedViewportRect_;
+        }
+        else if (environmentOpen_ && !environmentModalRect_.empty())
+        {
+            anchor = environmentModalRect_.inset({24.0f, 56.0f, 24.0f, 24.0f});
+        }
+
+        engineLogOverlayRect_ = computeEngineLogOverlayRect(anchor);
+        if (engineLogOverlayRect_.empty())
+        {
+            return;
+        }
+
+        const float oldPanelOpacity = ctx.brushes.panelDeep ? ctx.brushes.panelDeep->GetOpacity() : 1.0f;
+        const float oldBorderOpacity = ctx.brushes.border ? ctx.brushes.border->GetOpacity() : 1.0f;
+        const float oldAccentOpacity = ctx.brushes.accentBlue ? ctx.brushes.accentBlue->GetOpacity() : 1.0f;
+        if (ctx.brushes.panelDeep) { ctx.brushes.panelDeep->SetOpacity(0.94f); }
+        if (ctx.brushes.border) { ctx.brushes.border->SetOpacity(0.78f); }
+        D2DWidgetUtils::fillRounded(ctx, engineLogOverlayRect_, 14.0f, ctx.brushes.panelDeep, ctx.brushes.border, 1.1f);
+
+        UiRect accent = engineLogOverlayRect_;
+        accent.bottom = accent.top + 3.0f;
+        if (ctx.brushes.accentBlue) { ctx.brushes.accentBlue->SetOpacity(0.76f); }
+        D2DWidgetUtils::fillRounded(ctx, accent, 2.0f, ctx.brushes.accentBlue);
+
+        if (ctx.brushes.panelDeep) { ctx.brushes.panelDeep->SetOpacity(oldPanelOpacity); }
+        if (ctx.brushes.border) { ctx.brushes.border->SetOpacity(oldBorderOpacity); }
+        if (ctx.brushes.accentBlue) { ctx.brushes.accentBlue->SetOpacity(oldAccentOpacity); }
+
+        const UiRect header = makeUiRect(engineLogOverlayRect_.left + 14.0f, engineLogOverlayRect_.top + 10.0f, engineLogOverlayRect_.right - 14.0f, engineLogOverlayRect_.top + 32.0f);
+        D2DWidgetUtils::drawText(ctx, L"ACE Engine Log Console", ctx.fonts.bodyStrong, header, ctx.brushes.text);
+        D2DWidgetUtils::drawText(ctx, L"Enter = run local command | PgUp/PgDn = scroll | ` / Esc = close", ctx.fonts.small, header, ctx.brushes.muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
+
+        const UiRect meta = makeUiRect(engineLogOverlayRect_.left + 14.0f, engineLogOverlayRect_.top + 34.0f, engineLogOverlayRect_.right - 14.0f, engineLogOverlayRect_.top + 52.0f);
+        D2DWidgetUtils::drawText(ctx, L"Build/Logs/ace_engine.log | local-only commands: stat_rhi, stat_coords, stat_fps, stat_ui, clear_log", ctx.fonts.small, meta, ctx.brushes.muted);
+
+        const float inputHeight = 42.0f;
+        engineLogOverlayInputRect_ = makeUiRect(engineLogOverlayRect_.left + 14.0f, engineLogOverlayRect_.bottom - inputHeight - 12.0f, engineLogOverlayRect_.right - 14.0f, engineLogOverlayRect_.bottom - 12.0f);
+        UiRect logBody = makeUiRect(engineLogOverlayRect_.left + 14.0f, engineLogOverlayRect_.top + 58.0f, engineLogOverlayRect_.right - 14.0f, engineLogOverlayInputRect_.top - 10.0f);
+        D2DWidgetUtils::fillRounded(ctx, logBody, 10.0f, ctx.brushes.panel, ctx.brushes.borderDim, 1.0f);
+
+        const float lineHeight = 17.0f;
+        const float scrollBarWidth = 8.0f;
+        engineLogOverlayLogViewportRect_ = makeUiRect(logBody.left + 10.0f, logBody.top + 8.0f, logBody.right - 16.0f - scrollBarWidth, logBody.bottom - 8.0f);
+        engineLogOverlayScroll_.viewport = engineLogOverlayLogViewportRect_;
+        engineLogOverlayScroll_.track = makeUiRect(logBody.right - 12.0f, logBody.top + 9.0f, logBody.right - 6.0f, logBody.bottom - 9.0f);
+        const float previousMaxScroll = engineLogOverlayScroll_.maxScroll;
+        const bool wasAtBottom = engineLogOverlayScroll_.offset >= previousMaxScroll - 2.0f;
+        engineLogOverlayScroll_.viewportHeight = std::max(0.0f, engineLogOverlayScroll_.viewport.height());
+        engineLogOverlayScroll_.lineCount = engineLogOverlayLines_.size();
+        engineLogOverlayScroll_.contentHeight = static_cast<float>(engineLogOverlayLines_.size()) * lineHeight;
+        engineLogOverlayScroll_.maxScroll = std::max(0.0f, engineLogOverlayScroll_.contentHeight - engineLogOverlayScroll_.viewportHeight);
+        if (engineLogOverlayScroll_.autoScrollWhenAtBottom && (!engineLogOverlayScroll_.userScrolled || wasAtBottom))
+        {
+            engineLogOverlayScroll_.offset = engineLogOverlayScroll_.maxScroll;
+            engineLogOverlayScroll_.userScrolled = false;
+        }
+        clampAquariumScroll(engineLogOverlayScroll_);
+
+        ctx.target->PushAxisAlignedClip(engineLogOverlayScroll_.viewport.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        renderEngineLogTextSelection(ctx, lineHeight);
+        float y = engineLogOverlayScroll_.viewport.top - engineLogOverlayScroll_.offset;
+        for (const auto& line : engineLogOverlayLines_)
+        {
+            if (y + lineHeight >= engineLogOverlayScroll_.viewport.top && y <= engineLogOverlayScroll_.viewport.bottom)
+            {
+                D2DWidgetUtils::drawText(
+                    ctx,
+                    line.empty() ? L" " : line,
+                    ctx.fonts.mono,
+                    makeUiRect(engineLogOverlayScroll_.viewport.left, y, engineLogOverlayScroll_.viewport.right, y + lineHeight),
+                    ctx.brushes.textDim);
+            }
+            y += lineHeight;
+        }
+        ctx.target->PopAxisAlignedClip();
+        renderAquariumScrollbar(ctx, engineLogOverlayScroll_);
+
+        engineLogOverlayInput_.setRect(engineLogOverlayInputRect_);
+        engineLogOverlayInput_.setFocused(engineLogOverlayInputFocused_);
+        engineLogOverlayInput_.render(ctx);
     }
 
     void AceShellUi::showToast(std::wstring title, std::wstring body, D2DToastKind kind)
@@ -4192,6 +7836,16 @@ namespace am::ui
         }
 
         layout(width, height);
+
+        if (environmentOpen_ && aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_)
+        {
+            aquariumResizeQuarantineActive_ = true;
+            aquariumResizeQuarantineDelaySeconds_ = 0.12f;
+            ++aquariumResizeQuarantineEnterCount_;
+            aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
+            aquariumEmbeddedViewportStatus_ = L"Real DX12 3D resize freeze active";
+            aquariumEmbeddedViewportSyncNeeded_ = true;
+        }
     }
 
     void AceShellUi::layoutForLiveResize(int width, int height)
@@ -4212,12 +7866,11 @@ namespace am::ui
             environment3DMode_.ClampPanelState(aquarium3DPanelState_, static_cast<float>(width), static_cast<float>(height));
             const auto liveLayout = environment3DMode_.Compute(static_cast<float>(width), static_cast<float>(height), aquarium3DPanelState_);
             aquariumEmbeddedViewportRect_ = makeUiRect(liveLayout.dx12Surface.left, liveLayout.dx12Surface.top, liveLayout.dx12Surface.right, liveLayout.dx12Surface.bottom);
-            aquariumPendingViewportRect_ = aquariumEmbeddedViewportRect_;
+            aquariumNativeViewportRect_ = computeAquariumNativeViewportRect(aquariumEmbeddedViewportRect_);
+            aquariumPendingViewportRect_ = aquariumNativeViewportRect_;
             aquariumPendingViewportValid_ = true;
-            if (!aquariumUseSingleHwndCompositeViewport_)
-            {
-                updateAquariumResizeShieldWindow(aquariumEmbeddedViewportRect_);
-            }
+            // ACE-AQ3D11R2: parent D2D proxy covers resize; no popup shield.
+            hideAquariumResizeShieldWindow();
         }
 
         forceLiveResizeProxyRepaintNow();
@@ -4236,24 +7889,20 @@ namespace am::ui
         pendingLiveResizeHeight_ = height_;
         gradientsDirty_ = true;
         aquariumEmbeddedViewportSyncNeeded_ = true;
+        aquariumResizeQuarantineActive_ = true;
+        aquariumResizeQuarantineDelaySeconds_ = 0.18f;
+        ++aquariumResizeQuarantineEnterCount_;
         captureFrozenNativeResizeRect();
         aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
 
         aquariumViewportWasVisibleBeforeLiveResize_ = environmentOpen_ && aquarium3DModeActive_ && aquariumEmbeddedDx12Viewport_.IsVisible();
         aquariumViewportHiddenForLiveResize_ = false;
-        if (aquariumViewportWasVisibleBeforeLiveResize_)
-        {
-            aquariumEmbeddedDx12Viewport_.HideForLiveResize();
-            aquariumViewportHiddenForLiveResize_ = true;
-            ++viewportHideForLiveResizeCount_;
-        }
 
-        if (environmentOpen_ && aquarium3DModeActive_ && !aquariumUseSingleHwndCompositeViewport_)
+        if (environmentOpen_ && aquarium3DModeActive_)
         {
-            updateAquariumResizeShieldWindow(aquariumEmbeddedViewportRect_);
-        }
-        else if (aquariumUseSingleHwndCompositeViewport_)
-        {
+            // ACE-AQ3D11R5: no proxy swap and no hide/show loop. The child DX12
+            // surface stays visible at its last stable rect while resize settles.
+            aquariumEmbeddedViewportStatus_ = L"Real DX12 3D resize freeze active";
             hideAquariumResizeShieldWindow();
         }
 
@@ -4262,10 +7911,10 @@ namespace am::ui
 
     bool AceShellUi::shouldFreezeNativeLiveResize() const
     {
-        // ACE-AQ3D14: native resize freezing is disabled for the single-HWND
-        // composite viewport path. It remains only as a legacy emergency path
-        // for the old child-HWND swapchain renderer.
-        return !aquariumUseSingleHwndCompositeViewport_ && environmentOpen_ && aquarium3DModeActive_;
+        // ACE-AQ3D11R2: do not freeze the native top-level window during resize.
+        // The real DX12 child viewport is hidden and the parent paints the stable
+        // single-HWND D2D proxy until WM_EXITSIZEMOVE restores renderFrame3D.
+        return false;
     }
 
     void AceShellUi::captureFrozenNativeResizeRect()
@@ -4377,7 +8026,12 @@ namespace am::ui
         windowLiveResizeActive_ = false;
         ++liveResizeExitCount_;
 
-        aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(false);
+        // ACE-AQ3D11R3: do not restore the child swapchain immediately at
+        // WM_EXITSIZEMOVE. Keep a short resize quarantine so DWM/layout/parent D2D
+        // settle before the embedded DX12 child HWND comes back.
+        aquariumResizeQuarantineActive_ = true;
+        aquariumResizeQuarantineDelaySeconds_ = 0.18f;
+        aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
         applyFrozenNativeResizeCommit();
         applyDeferredLiveResize();
     }
@@ -4393,7 +8047,6 @@ namespace am::ui
             aquariumEmbeddedViewportSyncNeeded_ = true;
             invalidate();
             forceLiveResizeProxyRepaintNow();
-            restoreEmbeddedViewportAfterLiveResize();
             return;
         }
 
@@ -4407,7 +8060,6 @@ namespace am::ui
         ++liveResizeAppliedFinalCount_;
         invalidate();
         forceLiveResizeProxyRepaintNow();
-        restoreEmbeddedViewportAfterLiveResize();
     }
 
     void AceShellUi::forceLiveResizeProxyRepaintNow()
@@ -4418,11 +8070,8 @@ namespace am::ui
         }
 
         ++liveResizeSynchronousProxyPaintCount_;
-        if (windowLiveResizeActive_ && environmentOpen_ && aquarium3DModeActive_ && !aquariumUseSingleHwndCompositeViewport_)
-        {
-            updateAquariumResizeShieldWindow(aquariumEmbeddedViewportRect_);
-        }
-        // ACE-AQ3D10: live resize must not wait for a later idle tick/paint.
+        hideAquariumResizeShieldWindow();
+        // ACE-AQ3D10/AQ3D11R2: live resize must not wait for a later idle tick/paint.
         // Force a no-erase synchronous parent repaint so the D2D proxy fills the
         // viewport rectangle immediately after each WM_SIZE, before the desktop
         // compositor can expose stale child/DX12 contents.
@@ -4433,6 +8082,15 @@ namespace am::ui
     {
         if (!environmentOpen_ || !aquarium3DModeActive_)
         {
+            return;
+        }
+
+        if (aquariumResizeQuarantineActive_ ||
+            windowLiveResizeActive_ ||
+            aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None)
+        {
+            aquariumEmbeddedDx12Viewport_.SetResizeApplySuspended(true);
+            aquariumEmbeddedViewportStatus_ = L"Real DX12 3D resize freeze active";
             return;
         }
 
@@ -4455,9 +8113,9 @@ namespace am::ui
         if (aquariumControllerReady_ && aquariumEmbeddedViewportVisible_ && aquariumEmbeddedDx12Viewport_.IsVisible())
         {
             std::string viewportError;
-            if (!aquariumEmbeddedDx12Viewport_.RenderFrame(aquariumController_, aquariumSceneAdapter_, aquariumController_.DebugTruthEnabled(), &viewportError))
+            if (!aquariumEmbeddedDx12Viewport_.RenderFrame(aquariumController_, aquariumSceneAdapter_, aquariumController_.DebugTruthEnabled(), 1.0f / 60.0f, &viewportError))
             {
-                aquariumEmbeddedViewportStatus_ = L"DX12 Environment renderer unavailable; check logs.";
+                aquariumEmbeddedViewportStatus_ = L"Single-HWND 3D renderer unavailable; check logs.";
             }
         }
 
@@ -4681,6 +8339,7 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
         r.bottom = static_cast<LONG>(std::ceil(rect.bottom));
 
         ++partialInvalidationCount_;
+        ++d2dFrameInvalidationSerial_;
         uiInvalidation_.MarkRect(rect, AceUiDirtyReason::Paint);
         ++aceUi8InvalidationFrameCount_;
         // ACE-AQ3D7: dirty rect invalidation excludes child HWNDs and never
@@ -4714,6 +8373,7 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
         if (parent_)
         {
             ++fullInvalidationCount_;
+            ++d2dFrameInvalidationSerial_;
             uiInvalidation_.Mark(AceUiDirtyReason::All);
             ++aceUi8InvalidationFrameCount_;
             // ACE-AQ3D7: full invalidation is reserved for major layout/mode changes.
@@ -4742,6 +8402,11 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
         else if (commandPalette_.active())
         {
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+        }
+        else if (engineLogOverlayVisible_ &&
+            (engineLogOverlayInputRect_.contains(x, y) || engineLogOverlayLogViewportRect_.contains(x, y)))
+        {
+            SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
         }
         else if (input_.hitTest(static_cast<float>(p.x), static_cast<float>(p.y)))
         {

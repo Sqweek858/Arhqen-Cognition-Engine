@@ -4,6 +4,11 @@
     <Filter Include="" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Core\AceRenderer.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceRenderScene.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceAquariumGpuViewportRenderer.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\RHI\AceRhi.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\RHI\AceDx12Rhi.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\AquariumUI\AceAquariumLogModel.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\AquariumUI\AceAquariumPanel.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\AquariumUI\AceAquariumRuntimeController.h"><Filter></Filter></ClInclude>
@@ -51,6 +56,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Dx12Renderer.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\NativeWindow.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\UiDrawList.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene3DDrawList.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Resources\Resource.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\AceShellUi.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\UiAnimation.h"><Filter></Filter></ClInclude>
@@ -73,6 +79,29 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DCyberText.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DDiagnosticsOverlay.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DDisplayMetrics.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFlipFrameCompositor.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DSharedViewportBridgePolicy.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportFrameLatch.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateFrameAllocator.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateFrameTopology.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateRenderer.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateBatchCache.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateClipStack.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateInvalidationPlanner.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateWindowRendererPipeline.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateViewportElement.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateLayerTree.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlatePaintJournal.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFrameGraph.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFrameDiagnostics.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DPresentScheduler.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportBridgeRuntime.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportCopyScheduler.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportTextureCache.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFrameTransaction.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DCompositorAudit.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateFramePrimitives.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateElementList.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DFocusManager.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DGlassEffects.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DGraphCanvas.h"><Filter></Filter></ClInclude>
@@ -116,6 +145,11 @@
     <ClInclude Include="Private\Renderer\D3dx12Mini.h"><Filter></Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Private\Renderer\Core\AceRenderer.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Renderer\Scene\AceRenderScene.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Renderer\Scene\AceAquariumGpuViewportRenderer.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Renderer\RHI\AceRhi.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Renderer\RHI\AceDx12Rhi.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\App\Main.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Aquarium\AceAqActions.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Aquarium\AceAqBody.cpp"><Filter></Filter></ClCompile>
@@ -161,7 +195,31 @@
     <ClCompile Include="Private\Renderer\Dx12Renderer.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Renderer\NativeWindow.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Renderer\UiDrawList.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Renderer\Scene3DDrawList.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Ui\AceShellUi.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateFramePrimitives.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateElementList.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DFlipFrameCompositor.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DSharedViewportBridgePolicy.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportFrameLatch.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateFrameAllocator.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateFrameTopology.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateRenderer.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateBatchCache.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateClipStack.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateInvalidationPlanner.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateWindowRendererPipeline.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateViewportElement.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlateLayerTree.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\Slate\AceSlatePaintJournal.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DFrameGraph.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DFrameDiagnostics.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DPresentScheduler.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportBridgeRuntime.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportCopyScheduler.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportTextureCache.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DFrameTransaction.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Ui\D2D\AceD2DCompositorAudit.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Ui\Core\UiAnimation.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Ui\Core\AceUiInvalidationRoot.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Ui\Core\AceUiRetainedLayout.cpp"><Filter></Filter></ClCompile>

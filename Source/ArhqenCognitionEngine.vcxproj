@@ -16,9 +16,14 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup><OutDir>$(SolutionDir)Build\ACE-AQUI0\$(Configuration)\</OutDir><IntDir>$(SolutionDir)Build\Intermediate\$(ProjectName)\$(Configuration)\</IntDir><TargetName>ArhqenCognitionEngine</TargetName></PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_DEBUG=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><Optimization>MaxSpeed</Optimization><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_RELEASE=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;dxgi.lib;d3dcompiler.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_DEBUG=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;dcomp.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><Optimization>MaxSpeed</Optimization><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_RELEASE=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;dcomp.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Core\AceRenderer.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceRenderScene.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceAquariumGpuViewportRenderer.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\RHI\AceRhi.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\RHI\AceDx12Rhi.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\AquariumUI\AceAquariumLogModel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\AquariumUI\AceAquariumPanel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\AquariumUI\AceAquariumRuntimeController.h" />
@@ -66,6 +71,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Dx12Renderer.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\NativeWindow.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\UiDrawList.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene3DDrawList.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Resources\Resource.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\AceShellUi.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\UiAnimation.h" />
@@ -88,6 +94,29 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DCyberText.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DDiagnosticsOverlay.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DDisplayMetrics.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFlipFrameCompositor.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DSharedViewportBridgePolicy.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportFrameLatch.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateFrameAllocator.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateFrameTopology.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateRenderer.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateBatchCache.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateClipStack.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateInvalidationPlanner.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateWindowRendererPipeline.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateViewportElement.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateLayerTree.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlatePaintJournal.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFrameGraph.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFrameDiagnostics.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DPresentScheduler.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportBridgeRuntime.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportCopyScheduler.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DViewportTextureCache.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DFrameTransaction.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\AceD2DCompositorAudit.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateFramePrimitives.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Slate\AceSlateElementList.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DFocusManager.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DGlassEffects.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\D2D\D2DGraphCanvas.h" />
@@ -131,6 +160,11 @@
     <ClInclude Include="Private\Renderer\D3dx12Mini.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Private\Renderer\Core\AceRenderer.cpp" />
+    <ClCompile Include="Private\Renderer\Scene\AceRenderScene.cpp" />
+    <ClCompile Include="Private\Renderer\Scene\AceAquariumGpuViewportRenderer.cpp" />
+    <ClCompile Include="Private\Renderer\RHI\AceRhi.cpp" />
+    <ClCompile Include="Private\Renderer\RHI\AceDx12Rhi.cpp" />
     <ClCompile Include="Private\App\Main.cpp" />
     <ClCompile Include="Private\Aquarium\AceAqActions.cpp" />
     <ClCompile Include="Private\Aquarium\AceAqBody.cpp" />
@@ -176,7 +210,31 @@
     <ClCompile Include="Private\Renderer\Dx12Renderer.cpp" />
     <ClCompile Include="Private\Renderer\NativeWindow.cpp" />
     <ClCompile Include="Private\Renderer\UiDrawList.cpp" />
+    <ClCompile Include="Private\Renderer\Scene3DDrawList.cpp" />
     <ClCompile Include="Private\Ui\AceShellUi.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateFramePrimitives.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateElementList.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DFlipFrameCompositor.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DSharedViewportBridgePolicy.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportFrameLatch.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateFrameAllocator.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateFrameTopology.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateRenderer.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateBatchCache.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateClipStack.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateInvalidationPlanner.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateWindowRendererPipeline.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateViewportElement.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlateLayerTree.cpp" />
+    <ClCompile Include="Private\Ui\Slate\AceSlatePaintJournal.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DFrameGraph.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DFrameDiagnostics.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DPresentScheduler.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportBridgeRuntime.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportCopyScheduler.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DViewportTextureCache.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DFrameTransaction.cpp" />
+    <ClCompile Include="Private\Ui\D2D\AceD2DCompositorAudit.cpp" />
     <ClCompile Include="Private\Ui\Core\UiAnimation.cpp" />
     <ClCompile Include="Private\Ui\Core\AceUiInvalidationRoot.cpp" />
     <ClCompile Include="Private\Ui\Core\AceUiRetainedLayout.cpp" />

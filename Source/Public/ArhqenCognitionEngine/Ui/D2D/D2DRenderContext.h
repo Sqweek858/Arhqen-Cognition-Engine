@@ -50,7 +50,7 @@ namespace am::ui
 
     struct D2DRenderContext
     {
-        ID2D1HwndRenderTarget* target = nullptr;
+        ID2D1RenderTarget* target = nullptr;
         D2DTheme* theme = nullptr;
         DWriteFontEngine* fontEngine = nullptr;
         DWriteTextCache* textCache = nullptr;

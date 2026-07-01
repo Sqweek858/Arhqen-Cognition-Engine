@@ -2,6 +2,8 @@
 
 #include "ArhqenCognitionEngine/AquariumUI/AceAquariumRuntimeController.h"
 
+#include <windowsx.h>
+
 #include <algorithm>
 #include <sstream>
 
@@ -12,6 +14,21 @@ namespace ace::aquarium_render
         am::renderer::UiColor color(float r, float g, float b, float a)
         {
             return {std::clamp(r, 0.0f, 1.0f), std::clamp(g, 0.0f, 1.0f), std::clamp(b, 0.0f, 1.0f), std::clamp(a, 0.0f, 1.0f)};
+        }
+
+        am::renderer::Scene3DColor sceneColor(float r, float g, float b, float a)
+        {
+            return {std::clamp(r, 0.0f, 1.0f), std::clamp(g, 0.0f, 1.0f), std::clamp(b, 0.0f, 1.0f), std::clamp(a, 0.0f, 1.0f)};
+        }
+
+        am::renderer::Scene3DVec3 sceneVec(float x, float y, float z)
+        {
+            return {x, y, z};
+        }
+
+        float sceneY(const AceAqRenderPrimitive& primitive)
+        {
+            return primitive.Z;
         }
 
         am::renderer::UiRect rectAround(const AceAqViewportPoint& p, float w, float h)
@@ -351,6 +368,34 @@ namespace ace::aquarium_render
             return 0;
         }
 
+        case WM_RBUTTONDOWN:
+            mouseLookActive_ = true;
+            lastMouseX_ = GET_X_LPARAM(lParam);
+            lastMouseY_ = GET_Y_LPARAM(lParam);
+            SetCapture(hwnd_);
+            SetFocus(hwnd_);
+            return 0;
+
+        case WM_RBUTTONUP:
+            mouseLookActive_ = false;
+            if (GetCapture() == hwnd_)
+            {
+                ReleaseCapture();
+            }
+            return 0;
+
+        case WM_MOUSEMOVE:
+            if (mouseLookActive_)
+            {
+                const int x = GET_X_LPARAM(lParam);
+                const int y = GET_Y_LPARAM(lParam);
+                realCamera_.ApplyMouseDelta(static_cast<float>(x - lastMouseX_), static_cast<float>(y - lastMouseY_));
+                lastMouseX_ = x;
+                lastMouseY_ = y;
+                return 0;
+            }
+            break;
+
         case WM_ERASEBKGND:
             return 1;
 
@@ -363,6 +408,7 @@ namespace ace::aquarium_render
         const ace::aquarium_ui::AceAquariumRuntimeController& controller,
         const AceAquariumSceneAdapter& sceneAdapter,
         bool debugTruthEnabled,
+        float deltaSeconds,
         std::string* error
     )
     {
@@ -380,8 +426,19 @@ namespace ace::aquarium_render
         }
 
         ++frameCount_;
-        auto drawList = BuildDrawList(controller, sceneAdapter, debugTruthEnabled);
-        if (!renderer_.renderFrame(drawList, error))
+        UpdateCameraInput(deltaSeconds);
+
+        auto scene = BuildScene3D(controller, sceneAdapter, debugTruthEnabled);
+        auto overlay = BuildOverlay(debugTruthEnabled);
+        am::renderer::Scene3DConstants constants{};
+        const float aspect = static_cast<float>(std::max(1, width_)) / static_cast<float>(std::max(1, height_));
+        const auto viewProjection = realCamera_.ViewProjectionMatrix(aspect);
+        for (std::size_t i = 0; i < 16; ++i)
+        {
+            constants.viewProjection[i] = viewProjection.m[i];
+        }
+
+        if (!renderer_.renderFrame3D(scene, constants, overlay, error))
         {
             if (error) { lastError_ = *error; }
             return false;
@@ -390,83 +447,102 @@ namespace ace::aquarium_render
         return true;
     }
 
-    am::renderer::UiDrawList AceAquariumEmbeddedDx12Viewport::BuildDrawList(
+
+    void AceAquariumEmbeddedDx12Viewport::UpdateCameraInput(float deltaSeconds)
+    {
+        AceAqCameraInput input{};
+        input.moveForward = (GetAsyncKeyState('W') & 0x8000) != 0;
+        input.moveBackward = (GetAsyncKeyState('S') & 0x8000) != 0;
+        input.moveLeft = (GetAsyncKeyState('A') & 0x8000) != 0;
+        input.moveRight = (GetAsyncKeyState('D') & 0x8000) != 0;
+        input.moveDown = (GetAsyncKeyState('Q') & 0x8000) != 0;
+        input.moveUp = (GetAsyncKeyState('E') & 0x8000) != 0;
+        realCamera_.UpdateFromInput(input, deltaSeconds);
+    }
+
+    am::renderer::UiDrawList AceAquariumEmbeddedDx12Viewport::BuildOverlay(bool debugTruthEnabled)
+    {
+        am::renderer::UiDrawList overlay;
+        const float surfaceW = static_cast<float>(std::max(1, width_));
+        const float surfaceH = static_cast<float>(std::max(1, height_));
+
+        overlay.addRectPixels({0.0f, 0.0f, surfaceW, 28.0f}, debugTruthEnabled ? color(0.52f, 0.20f, 0.06f, 0.84f) : color(0.020f, 0.060f, 0.110f, 0.74f), surfaceW, surfaceH);
+        return overlay;
+    }
+
+    am::renderer::Scene3DDrawList AceAquariumEmbeddedDx12Viewport::BuildScene3D(
         const ace::aquarium_ui::AceAquariumRuntimeController& controller,
         const AceAquariumSceneAdapter& sceneAdapter,
         bool debugTruthEnabled
     )
     {
-        am::renderer::UiDrawList drawList;
-        const float surfaceW = static_cast<float>(std::max(1, width_));
-        const float surfaceH = static_cast<float>(std::max(1, height_));
-
-        drawList.addRectPixels({0.0f, 0.0f, surfaceW, surfaceH}, color(0.010f, 0.020f, 0.044f, 1.0f), surfaceW, surfaceH);
-        drawList.addRectPixels({0.0f, 0.0f, surfaceW, 28.0f}, debugTruthEnabled ? color(0.52f, 0.20f, 0.06f, 0.92f) : color(0.020f, 0.060f, 0.110f, 0.90f), surfaceW, surfaceH);
-
+        (void)controller;
+        am::renderer::Scene3DDrawList scene;
         const auto primitives = sceneAdapter.BuildPrimitives(controller, debugTruthEnabled);
 
-        float maxX = 1.0f;
-        float maxY = 1.0f;
+        float maxX = 10.0f;
+        float maxZ = 10.0f;
         for (const auto& primitive : primitives)
         {
-            maxX = std::max(maxX, primitive.X + std::max(0.0f, primitive.SizeX));
-            maxY = std::max(maxY, primitive.Y + std::max(0.0f, primitive.SizeY));
+            maxX = std::max(maxX, primitive.X + std::max(primitive.SizeX, 0.0f));
+            maxZ = std::max(maxZ, primitive.Y + std::max(primitive.SizeY, 0.0f));
         }
 
-        auto camera = camera_;
-        camera.Zoom = std::clamp(std::min(surfaceW / std::max(maxX + maxY + 2.0f, 1.0f), (surfaceH - 44.0f) / std::max((maxX + maxY) * 0.62f + 3.0f, 1.0f)) * 2.55f, 22.0f, 92.0f);
-        camera.OriginY = std::max(18.0f, surfaceH * 0.045f);
+        scene.addGroundGrid(-1.0f, maxX + 1.0f, -1.0f, maxZ + 1.0f, 0.0f, 0.012f, sceneColor(0.12f, 0.58f, 0.74f, 0.32f));
 
-        const auto model = viewport_.BuildViewportModel(primitives, camera, surfaceW, surfaceH);
-        const float tileW = std::clamp(camera.Zoom * 0.86f, 28.0f, 76.0f);
-        const float tileH = std::clamp(camera.Zoom * 0.42f, 14.0f, 38.0f);
-        const float blockW = std::clamp(camera.Zoom * 0.72f, 28.0f, 70.0f);
-        const float blockH = std::clamp(camera.Zoom * 1.04f, 36.0f, 96.0f);
-        const float agentW = std::clamp(camera.Zoom * 0.92f, 40.0f, 86.0f);
-        const float agentH = std::clamp(camera.Zoom * 1.22f, 52.0f, 116.0f);
-
-        for (const auto& primitive : model)
+        for (const auto& primitive : primitives)
         {
-            const auto c = color(primitive.R, primitive.G, primitive.Bc, primitive.Aalpha);
+            const float x0 = primitive.X;
+            const float z0 = primitive.Y;
+            const float x1 = primitive.X + std::max(primitive.SizeX, 0.04f);
+            const float z1 = primitive.Y + std::max(primitive.SizeY, 0.04f);
+            const float y0 = std::max(0.0f, sceneY(primitive));
+            const float h = std::max(0.03f, primitive.SizeZ);
+            const auto c = sceneColor(primitive.R, primitive.G, primitive.B, primitive.A);
 
             switch (primitive.Kind)
             {
             case AceAqRenderPrimitiveKind::GridLine:
-                drawList.addRectPixels(rectFromPoints(primitive.A, primitive.B, 1.0f), c, surfaceW, surfaceH);
                 break;
 
             case AceAqRenderPrimitiveKind::Tile:
-                drawList.addRectPixels(rectAround(primitive.A, tileW, tileH), c, surfaceW, surfaceH);
+                scene.addBox(sceneVec(x0, 0.0f, z0), sceneVec(x1, 0.035f, z1), c);
                 break;
 
             case AceAqRenderPrimitiveKind::Block:
-                drawList.addRectPixels(rectAround(primitive.A, blockW, blockH), c, surfaceW, surfaceH);
-                drawList.addRectPixels({primitive.A.X - blockW * 0.35f, primitive.A.Y - blockH * 0.56f, blockW * 0.70f, std::max(4.0f, blockH * 0.14f)}, color(primitive.R + 0.12f, primitive.G + 0.12f, primitive.Bc + 0.12f, primitive.Aalpha), surfaceW, surfaceH);
+                scene.addBox(sceneVec(x0, y0, z0), sceneVec(x1, y0 + std::max(0.20f, h), z1), c);
                 break;
 
             case AceAqRenderPrimitiveKind::Agent:
-                drawList.addRectPixels(rectAround(primitive.A, agentW * 1.42f, agentH * 1.16f), color(0.08f, 0.50f, 0.72f, 0.22f), surfaceW, surfaceH);
-                drawList.addRectPixels(rectAround(primitive.A, agentW, agentH), color(0.10f, 0.95f, 1.0f, 0.92f), surfaceW, surfaceH);
+                scene.addBox(sceneVec(x0, 0.05f, z0), sceneVec(x1, 0.90f, z1), sceneColor(0.10f, 0.95f, 1.0f, 0.96f));
                 break;
 
             case AceAqRenderPrimitiveKind::DirectionArrow:
-                drawList.addRectPixels(rectFromPoints(primitive.A, primitive.B, std::max(4.0f, camera.Zoom * 0.08f)), color(1.0f, 0.90f, 0.20f, 0.92f), surfaceW, surfaceH);
-                drawList.addRectPixels(rectAround(primitive.B, std::max(8.0f, camera.Zoom * 0.16f), std::max(8.0f, camera.Zoom * 0.16f)), color(1.0f, 0.90f, 0.20f, 0.92f), surfaceW, surfaceH);
+            {
+                const float ex = primitive.X + primitive.SizeX;
+                const float ez = primitive.Y + primitive.SizeY;
+                const float minX = std::min(primitive.X, ex) - 0.045f;
+                const float maxX2 = std::max(primitive.X, ex) + 0.045f;
+                const float minZ = std::min(primitive.Y, ez) - 0.045f;
+                const float maxZ2 = std::max(primitive.Y, ez) + 0.045f;
+                scene.addBox(sceneVec(minX, 0.82f, minZ), sceneVec(maxX2, 0.90f, maxZ2), sceneColor(1.0f, 0.90f, 0.20f, 0.95f));
+                scene.addBox(sceneVec(ex - 0.10f, 0.88f, ez - 0.10f), sceneVec(ex + 0.10f, 1.04f, ez + 0.10f), sceneColor(1.0f, 0.90f, 0.20f, 0.95f));
                 break;
+            }
 
             case AceAqRenderPrimitiveKind::Highlight:
-                drawList.addRectPixels(rectAround(primitive.A, tileW * 1.16f, tileH * 1.55f), color(1.0f, 0.82f, 0.20f, 0.34f), surfaceW, surfaceH);
+                scene.addBox(sceneVec(x0, 0.06f, z0), sceneVec(x1, 0.10f, z1), sceneColor(1.0f, 0.78f, 0.16f, 0.52f));
                 break;
 
             case AceAqRenderPrimitiveKind::DebugLabel:
                 if (debugTruthEnabled)
                 {
-                    drawList.addRectPixels(rectAround(primitive.A, 18.0f, 6.0f), color(1.0f, 0.55f, 0.18f, 0.90f), surfaceW, surfaceH);
+                    scene.addBox(sceneVec(x0 - 0.08f, y0 + 1.0f, z0 - 0.08f), sceneVec(x0 + 0.08f, y0 + 1.10f, z0 + 0.08f), sceneColor(1.0f, 0.55f, 0.18f, 0.96f));
                 }
                 break;
             }
         }
 
-        return drawList;
+        return scene;
     }
 }

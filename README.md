@@ -256,3 +256,35 @@ ACE-UI3G keeps the D2D pixel-space DPI fix while making the 3D Environment UI mo
 ## ACE-UI5..UI11 + ACE-AQUI1 UI Foundation Pass
 
 ACE-UI5 adds text clipping/ellipsis helpers, ACE-UI6 adds a retained layout tree, ACE-UI7 adds a draw command buffer, ACE-UI8 adds invalidation dirty regions, ACE-UI9 adds a UI debug overlay, ACE-AQUI1 adds Aquarium telemetry widgets, and ACE-UI11 adds the first named style-set layer.
+
+## ACE-AQ3D11 Real 3D Viewport + Simple Camera
+
+ACE-AQ3D11 adds a minimal real 3D DX12 path for the embedded Environment viewport: camera-relative WASD movement, Q/E world vertical movement, right-mouse look, view/projection matrices, Scene3DDrawList, DX12 3D shaders, and depth buffer support.
+
+## ACE-AQ3D11R2 Resize Proxy + Mouse Direction Fix
+
+ACE-AQ3D11R2 fixes mouse-look X direction and uses the stable D2D composite only as a temporary live-resize proxy while the real embedded DX12 3D viewport is hidden and restored after resize.
+
+## ACE-AQ3D12 Single-HWND 3D Composition
+
+ACE-AQ3D12 makes the Environment 3D main path single-HWND to avoid child HWND / DWM resize flicker. It keeps AceAquariumRealCamera input and uses a CPU projected Direct2D compositor as the flicker-safe bridge before a future DX12 offscreen texture path.
+
+## ACE-RHI0 Renderer Core Foundation
+
+ACE-RHI0 adds a backend-neutral renderer core: RHI types, resource registry, command lists, render graph, scene renderer, renderer facade and Null backend validation. This is the first step toward engine-level rendering without child-HWND flicker or D2D fake-3D.
+
+## ACE-RHI1 + ACE-RHI2 DX12 Backend Shell
+
+ACE-RHI1/RHI2 adds a real DX12 backend shell with hardware adapter selection, D3D12 device/queue/allocator/command list/fence, RTV/DSV/CBV-SRV-UAV descriptor heaps, native buffer/texture backing, upload arena, GPU buffer copy and render-target clear smoke validation.
+
+## ACE-RHI3 + ACE-RHI4 DX12 Draw + Offscreen Scene
+
+ACE-RHI3/RHI4 adds the first real DX12 draw path: embedded BasicColor HLSL, D3DCompile, root signature, graphics PSO, input layout, DrawInstanced/DrawIndexedInstanced, offscreen SceneColor/SceneDepth targets and a GPU probe that renders a MeshBatch through the renderer facade.
+
+## ACE-RHI5 + ACE-RHI6 GPU Environment Viewport
+
+ACE-RHI5/RHI6 connects the DX12 offscreen scene path to the main Environment viewport: DX12 renders Aquarium grid/blocks/agent mesh geometry into SceneColor/SceneDepth, reads back BGRA8, and the main HWND composes it as a D2D bitmap without reviving the child HWND flicker path. This is a stable bridge before zero-copy DirectComposition/shared-texture composition.
+
+## ACE-RHI7 + ACE-RHI8 GPU 3D + Zero-Copy Composition
+
+ACE-RHI7/RHI8 adds camera WVP root constants, a WVP HLSL shader path, depth-tested real 3D Aquarium mesh geometry, and a DirectComposition composition-swapchain path that presents DX12 SceneColor into the main HWND without CPU readback on the fast path. Readback remains only as fallback.

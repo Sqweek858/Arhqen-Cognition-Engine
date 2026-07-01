@@ -4,6 +4,7 @@
 
 #include <d3dcompiler.h>
 
+#include <algorithm>
 #include <cstring>
 #include <sstream>
 
@@ -86,6 +87,69 @@ float4 main(PSInput input) : SV_TARGET
 }
 )";
         }
+
+        D3D12_RESOURCE_DESC makeDepthDesc(int width, int height)
+        {
+            D3D12_RESOURCE_DESC desc{};
+            desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+            desc.Alignment = 0;
+            desc.Width = static_cast<UINT64>(std::max(1, width));
+            desc.Height = static_cast<UINT>(std::max(1, height));
+            desc.DepthOrArraySize = 1;
+            desc.MipLevels = 1;
+            desc.Format = DXGI_FORMAT_D32_FLOAT;
+            desc.SampleDesc.Count = 1;
+            desc.SampleDesc.Quality = 0;
+            desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+            desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+            return desc;
+        }
+
+        const char* scene3DVertexShaderSource()
+        {
+            return R"(
+cbuffer SceneConstants : register(b0)
+{
+    row_major float4x4 viewProjection;
+};
+
+struct VSInput
+{
+    float3 position : POSITION;
+    float4 color : COLOR;
+};
+
+struct PSInput
+{
+    float4 position : SV_POSITION;
+    float4 color : COLOR;
+};
+
+PSInput main(VSInput input)
+{
+    PSInput output;
+    output.position = mul(float4(input.position, 1.0f), viewProjection);
+    output.color = input.color;
+    return output;
+}
+)";
+        }
+
+        const char* scene3DPixelShaderSource()
+        {
+            return R"(
+struct PSInput
+{
+    float4 position : SV_POSITION;
+    float4 color : COLOR;
+};
+
+float4 main(PSInput input) : SV_TARGET
+{
+    return input.color;
+}
+)";
+        }
     }
 
     Dx12Renderer::~Dx12Renderer()
@@ -114,6 +178,11 @@ float4 main(PSInput input) : SV_TARGET
             return false;
         }
 
+        if (!createDepthResources(error))
+        {
+            return false;
+        }
+
         if (!createCommandObjects(error))
         {
             return false;
@@ -129,7 +198,17 @@ float4 main(PSInput input) : SV_TARGET
             return false;
         }
 
+        if (!createScene3DPipeline(error))
+        {
+            return false;
+        }
+
         if (!createUiVertexBuffer(error))
+        {
+            return false;
+        }
+
+        if (!createScene3DResources(error))
         {
             return false;
         }
@@ -231,6 +310,129 @@ float4 main(PSInput input) : SV_TARGET
         if (failed(hr))
         {
             if (error) { *error = hresultToString("IDXGISwapChain::Present", hr); }
+            return false;
+        }
+
+        moveToNextFrame();
+        return true;
+    }
+
+
+    bool Dx12Renderer::renderFrame3D(const Scene3DDrawList& scene, const Scene3DConstants& constants, const UiDrawList& overlay, std::string* error)
+    {
+        if (!initialized_)
+        {
+            if (error)
+            {
+                *error = "Dx12Renderer::renderFrame3D called before initialize.";
+            }
+            return false;
+        }
+
+        if (!uploadScene3DVertices(scene, error))
+        {
+            return false;
+        }
+
+        if (!uploadScene3DConstants(constants, error))
+        {
+            return false;
+        }
+
+        if (!uploadUiVertices(overlay, error))
+        {
+            return false;
+        }
+
+        auto* allocator = commandAllocators_[frameIndex_].Get();
+        HRESULT hr = allocator->Reset();
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12CommandAllocator::Reset 3D", hr); }
+            return false;
+        }
+
+        hr = commandList_->Reset(allocator, nullptr);
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12GraphicsCommandList::Reset 3D", hr); }
+            return false;
+        }
+
+        auto transitionToRenderTarget = MakeTransitionBarrier(
+            renderTargets_[frameIndex_].Get(),
+            D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RENDER_TARGET
+        );
+
+        commandList_->ResourceBarrier(1, &transitionToRenderTarget);
+
+        const auto rtv = currentRenderTargetView();
+        const auto dsv = dsvHeap_->GetCPUDescriptorHandleForHeapStart();
+        const float color[] = {clearColor_.r, clearColor_.g, clearColor_.b, clearColor_.a};
+
+        D3D12_VIEWPORT viewport{};
+        viewport.TopLeftX = 0.0f;
+        viewport.TopLeftY = 0.0f;
+        viewport.Width = static_cast<float>(renderWidth_);
+        viewport.Height = static_cast<float>(renderHeight_);
+        viewport.MinDepth = 0.0f;
+        viewport.MaxDepth = 1.0f;
+
+        D3D12_RECT scissorRect{};
+        scissorRect.left = 0;
+        scissorRect.top = 0;
+        scissorRect.right = static_cast<LONG>(renderWidth_);
+        scissorRect.bottom = static_cast<LONG>(renderHeight_);
+
+        commandList_->RSSetViewports(1, &viewport);
+        commandList_->RSSetScissorRects(1, &scissorRect);
+
+        commandList_->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+        commandList_->ClearRenderTargetView(rtv, color, 0, nullptr);
+        commandList_->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+        if (scene3DVertexCount_ > 0)
+        {
+            commandList_->SetGraphicsRootSignature(scene3DRootSignature_.Get());
+            commandList_->SetPipelineState(scene3DPipelineState_.Get());
+            commandList_->SetGraphicsRootConstantBufferView(0, scene3DConstantBuffer_->GetGPUVirtualAddress());
+            commandList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            commandList_->IASetVertexBuffers(0, 1, &scene3DVertexBufferView_);
+            commandList_->DrawInstanced(scene3DVertexCount_, 1, 0, 0);
+        }
+
+        if (uiVertexCount_ > 0)
+        {
+            commandList_->SetGraphicsRootSignature(uiRootSignature_.Get());
+            commandList_->SetPipelineState(uiPipelineState_.Get());
+            commandList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            commandList_->IASetVertexBuffers(0, 1, &uiVertexBufferView_);
+            commandList_->DrawInstanced(uiVertexCount_, 1, 0, 0);
+        }
+
+        auto transitionToPresent = MakeTransitionBarrier(
+            renderTargets_[frameIndex_].Get(),
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            D3D12_RESOURCE_STATE_PRESENT
+        );
+
+        commandList_->ResourceBarrier(1, &transitionToPresent);
+
+        hr = commandList_->Close();
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12GraphicsCommandList::Close 3D", hr); }
+            return false;
+        }
+
+        ID3D12CommandList* lists[] = { commandList_.Get() };
+        commandQueue_->ExecuteCommandLists(1, lists);
+
+        hr = swapChain_->Present(1, 0);
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("IDXGISwapChain::Present 3D", hr); }
             return false;
         }
 
@@ -402,6 +604,59 @@ float4 main(PSInput input) : SV_TARGET
             rtvHandle.ptr += rtvDescriptorSize_;
         }
 
+        return true;
+    }
+
+
+    bool Dx12Renderer::createDepthResources(std::string* error)
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc{};
+        dsvHeapDesc.NumDescriptors = 1;
+        dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+        HRESULT hr = device_->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsvHeap_));
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Device::CreateDescriptorHeap DSV", hr); }
+            return false;
+        }
+
+        D3D12_CLEAR_VALUE depthClear{};
+        depthClear.Format = DXGI_FORMAT_D32_FLOAT;
+        depthClear.DepthStencil.Depth = 1.0f;
+        depthClear.DepthStencil.Stencil = 0;
+
+        D3D12_HEAP_PROPERTIES heapProps{};
+        heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+        heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+        heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+        heapProps.CreationNodeMask = 1;
+        heapProps.VisibleNodeMask = 1;
+
+        const auto depthDesc = makeDepthDesc(renderWidth_, renderHeight_);
+
+        hr = device_->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &depthDesc,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            &depthClear,
+            IID_PPV_ARGS(&depthStencil_)
+        );
+
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Device::CreateCommittedResource depth", hr); }
+            return false;
+        }
+
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+        dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+        device_->CreateDepthStencilView(depthStencil_.Get(), &dsvDesc, dsvHeap_->GetCPUDescriptorHandleForHeapStart());
         return true;
     }
 
@@ -645,6 +900,190 @@ float4 main(PSInput input) : SV_TARGET
         return true;
     }
 
+
+    bool Dx12Renderer::createScene3DPipeline(std::string* error)
+    {
+        Microsoft::WRL::ComPtr<ID3DBlob> signatureBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
+
+        D3D12_ROOT_PARAMETER rootParameter{};
+        rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParameter.Descriptor.ShaderRegister = 0;
+        rootParameter.Descriptor.RegisterSpace = 0;
+        rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+        D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc{};
+        rootSignatureDesc.NumParameters = 1;
+        rootSignatureDesc.pParameters = &rootParameter;
+        rootSignatureDesc.NumStaticSamplers = 0;
+        rootSignatureDesc.pStaticSamplers = nullptr;
+        rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+        HRESULT hr = D3D12SerializeRootSignature(
+            &rootSignatureDesc,
+            D3D_ROOT_SIGNATURE_VERSION_1,
+            &signatureBlob,
+            &errorBlob
+        );
+
+        if (failed(hr))
+        {
+            if (error)
+            {
+                *error = hresultToString("D3D12SerializeRootSignature 3D", hr);
+                if (errorBlob)
+                {
+                    *error += " | ";
+                    *error += static_cast<const char*>(errorBlob->GetBufferPointer());
+                }
+            }
+            return false;
+        }
+
+        hr = device_->CreateRootSignature(
+            0,
+            signatureBlob->GetBufferPointer(),
+            signatureBlob->GetBufferSize(),
+            IID_PPV_ARGS(&scene3DRootSignature_)
+        );
+
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Device::CreateRootSignature 3D", hr); }
+            return false;
+        }
+
+        Microsoft::WRL::ComPtr<ID3DBlob> vertexShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> pixelShader;
+
+        UINT compileFlags = 0;
+    #if defined(_DEBUG)
+        compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    #endif
+
+        hr = D3DCompile(
+            scene3DVertexShaderSource(),
+            std::strlen(scene3DVertexShaderSource()),
+            "ArhqenCognitionEngineScene3DVS",
+            nullptr,
+            nullptr,
+            "main",
+            "vs_5_0",
+            compileFlags,
+            0,
+            &vertexShader,
+            &errorBlob
+        );
+
+        if (failed(hr))
+        {
+            if (error)
+            {
+                *error = hresultToString("D3DCompile 3D vertex shader", hr);
+                if (errorBlob)
+                {
+                    *error += " | ";
+                    *error += static_cast<const char*>(errorBlob->GetBufferPointer());
+                }
+            }
+            return false;
+        }
+
+        errorBlob.Reset();
+
+        hr = D3DCompile(
+            scene3DPixelShaderSource(),
+            std::strlen(scene3DPixelShaderSource()),
+            "ArhqenCognitionEngineScene3DPS",
+            nullptr,
+            nullptr,
+            "main",
+            "ps_5_0",
+            compileFlags,
+            0,
+            &pixelShader,
+            &errorBlob
+        );
+
+        if (failed(hr))
+        {
+            if (error)
+            {
+                *error = hresultToString("D3DCompile 3D pixel shader", hr);
+                if (errorBlob)
+                {
+                    *error += " | ";
+                    *error += static_cast<const char*>(errorBlob->GetBufferPointer());
+                }
+            }
+            return false;
+        }
+
+        D3D12_INPUT_ELEMENT_DESC inputElements[] =
+        {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        };
+
+        D3D12_RASTERIZER_DESC rasterizerDesc{};
+        rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+        rasterizerDesc.CullMode = D3D12_CULL_MODE_NONE;
+        rasterizerDesc.FrontCounterClockwise = FALSE;
+        rasterizerDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+        rasterizerDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+        rasterizerDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+        rasterizerDesc.DepthClipEnable = TRUE;
+        rasterizerDesc.MultisampleEnable = FALSE;
+        rasterizerDesc.AntialiasedLineEnable = FALSE;
+        rasterizerDesc.ForcedSampleCount = 0;
+        rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+
+        D3D12_BLEND_DESC blendDesc{};
+        blendDesc.AlphaToCoverageEnable = FALSE;
+        blendDesc.IndependentBlendEnable = FALSE;
+        auto& rtBlend = blendDesc.RenderTarget[0];
+        rtBlend.BlendEnable = TRUE;
+        rtBlend.LogicOpEnable = FALSE;
+        rtBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+        rtBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        rtBlend.BlendOp = D3D12_BLEND_OP_ADD;
+        rtBlend.SrcBlendAlpha = D3D12_BLEND_ONE;
+        rtBlend.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        rtBlend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        rtBlend.LogicOp = D3D12_LOGIC_OP_NOOP;
+        rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+        D3D12_DEPTH_STENCIL_DESC depthDesc{};
+        depthDesc.DepthEnable = TRUE;
+        depthDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        depthDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        depthDesc.StencilEnable = FALSE;
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
+        psoDesc.InputLayout = { inputElements, 2 };
+        psoDesc.pRootSignature = scene3DRootSignature_.Get();
+        psoDesc.VS = { vertexShader->GetBufferPointer(), vertexShader->GetBufferSize() };
+        psoDesc.PS = { pixelShader->GetBufferPointer(), pixelShader->GetBufferSize() };
+        psoDesc.RasterizerState = rasterizerDesc;
+        psoDesc.BlendState = blendDesc;
+        psoDesc.DepthStencilState = depthDesc;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = kBackBufferFormat;
+        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        psoDesc.SampleDesc.Count = 1;
+
+        hr = device_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&scene3DPipelineState_));
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Device::CreateGraphicsPipelineState 3D", hr); }
+            return false;
+        }
+
+        return true;
+    }
+
     bool Dx12Renderer::createUiVertexBuffer(std::string* error)
     {
         const auto bufferBytes = static_cast<std::uint64_t>(MaxUiVertices) * sizeof(UiVertex);
@@ -705,6 +1144,108 @@ float4 main(PSInput input) : SV_TARGET
 
         std::memcpy(mapped, drawList.vertices().data(), bytes);
         uiVertexBuffer_->Unmap(0, nullptr);
+
+        return true;
+    }
+
+
+    bool Dx12Renderer::createScene3DResources(std::string* error)
+    {
+        const auto vertexBytes = static_cast<std::uint64_t>(MaxScene3DVertices) * sizeof(Scene3DVertex);
+        const auto heapProps = makeUploadHeapProps();
+        const auto vertexDesc = makeBufferDesc(vertexBytes);
+
+        HRESULT hr = device_->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &vertexDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&scene3DVertexBuffer_)
+        );
+
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Device::CreateCommittedResource 3D vertex buffer", hr); }
+            return false;
+        }
+
+        scene3DVertexBufferView_.BufferLocation = scene3DVertexBuffer_->GetGPUVirtualAddress();
+        scene3DVertexBufferView_.SizeInBytes = static_cast<UINT>(vertexBytes);
+        scene3DVertexBufferView_.StrideInBytes = sizeof(Scene3DVertex);
+
+        const std::uint64_t constantBytes = 256;
+        const auto constantDesc = makeBufferDesc(constantBytes);
+
+        hr = device_->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &constantDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&scene3DConstantBuffer_)
+        );
+
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Device::CreateCommittedResource 3D constant buffer", hr); }
+            return false;
+        }
+
+        return true;
+    }
+
+    bool Dx12Renderer::uploadScene3DVertices(const Scene3DDrawList& scene, std::string* error)
+    {
+        scene3DVertexCount_ = scene.vertexCount();
+
+        if (scene3DVertexCount_ == 0)
+        {
+            return true;
+        }
+
+        if (scene3DVertexCount_ > MaxScene3DVertices)
+        {
+            if (error)
+            {
+                *error = "3D scene draw list exceeds MaxScene3DVertices.";
+            }
+            return false;
+        }
+
+        const auto bytes = static_cast<std::size_t>(scene3DVertexCount_) * sizeof(Scene3DVertex);
+
+        void* mapped = nullptr;
+        D3D12_RANGE readRange{0, 0};
+
+        HRESULT hr = scene3DVertexBuffer_->Map(0, &readRange, &mapped);
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Resource::Map 3D vertex buffer", hr); }
+            return false;
+        }
+
+        std::memcpy(mapped, scene.vertices().data(), bytes);
+        scene3DVertexBuffer_->Unmap(0, nullptr);
+
+        return true;
+    }
+
+    bool Dx12Renderer::uploadScene3DConstants(const Scene3DConstants& constants, std::string* error)
+    {
+        void* mapped = nullptr;
+        D3D12_RANGE readRange{0, 0};
+
+        HRESULT hr = scene3DConstantBuffer_->Map(0, &readRange, &mapped);
+        if (failed(hr))
+        {
+            if (error) { *error = hresultToString("ID3D12Resource::Map 3D constant buffer", hr); }
+            return false;
+        }
+
+        std::memset(mapped, 0, 256);
+        std::memcpy(mapped, &constants, sizeof(Scene3DConstants));
+        scene3DConstantBuffer_->Unmap(0, nullptr);
 
         return true;
     }

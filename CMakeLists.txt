@@ -52,7 +52,36 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Renderer/Dx12Renderer.cpp
     Source/Private/Renderer/NativeWindow.cpp
     Source/Private/Renderer/UiDrawList.cpp
+    Source/Private/Renderer/Scene3DDrawList.cpp
+    Source/Private/Renderer/RHI/AceRhi.cpp
+    Source/Private/Renderer/RHI/AceDx12Rhi.cpp
+    Source/Private/Renderer/Scene/AceRenderScene.cpp
+    Source/Private/Renderer/Scene/AceAquariumGpuViewportRenderer.cpp
+    Source/Private/Renderer/Core/AceRenderer.cpp
     Source/Private/Ui/AceShellUi.cpp
+    Source/Private/Ui/Slate/AceSlateFramePrimitives.cpp
+    Source/Private/Ui/Slate/AceSlateElementList.cpp
+    Source/Private/Ui/D2D/AceD2DFlipFrameCompositor.cpp
+    Source/Private/Ui/D2D/AceD2DSharedViewportBridgePolicy.cpp
+    Source/Private/Ui/Slate/AceSlateRenderer.cpp
+    Source/Private/Ui/Slate/AceSlateBatchCache.cpp
+    Source/Private/Ui/Slate/AceSlateClipStack.cpp
+    Source/Private/Ui/Slate/AceSlateInvalidationPlanner.cpp
+    Source/Private/Ui/Slate/AceSlateWindowRendererPipeline.cpp
+    Source/Private/Ui/Slate/AceSlateViewportElement.cpp
+    Source/Private/Ui/Slate/AceSlateLayerTree.cpp
+    Source/Private/Ui/Slate/AceSlatePaintJournal.cpp
+    Source/Private/Ui/D2D/AceD2DFrameGraph.cpp
+    Source/Private/Ui/D2D/AceD2DFrameDiagnostics.cpp
+    Source/Private/Ui/D2D/AceD2DPresentScheduler.cpp
+    Source/Private/Ui/D2D/AceD2DViewportBridgeRuntime.cpp
+    Source/Private/Ui/D2D/AceD2DViewportCopyScheduler.cpp
+    Source/Private/Ui/D2D/AceD2DViewportTextureCache.cpp
+    Source/Private/Ui/D2D/AceD2DFrameTransaction.cpp
+    Source/Private/Ui/D2D/AceD2DCompositorAudit.cpp
+    Source/Private/Ui/D2D/AceD2DViewportFrameLatch.cpp
+    Source/Private/Ui/Slate/AceSlateFrameAllocator.cpp
+    Source/Private/Ui/Slate/AceSlateFrameTopology.cpp
     Source/Private/Ui/Core/UiAnimation.cpp
     Source/Private/Ui/Core/AceUiInvalidationRoot.cpp
     Source/Private/Ui/Core/AceUiRetainedLayout.cpp
@@ -120,5 +149,5 @@ endif()
 
 if (WIN32)
     target_compile_definitions(ArhqenCognitionEngine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(ArhqenCognitionEngine PRIVATE d3d12 dxgi d3dcompiler d2d1 dwrite dwmapi)
+    target_link_libraries(ArhqenCognitionEngine PRIVATE d3d12 d3d11 dxgi d3dcompiler dcomp d2d1 dwrite dwmapi)
 endif()

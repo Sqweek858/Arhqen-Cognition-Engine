@@ -1,38 +1,173 @@
-# ACE-AQ3D12 - Owned Popup Resize Shield
+# ACE-AQ3D12
 
-AQ3D12 is a resize-only stabilization patch for the 3D Environment viewport.
-It does not add 3D features, camera controls, asset import, terrain, material graphs, or AQ-M16+ cognition work.
+## Scope
 
-## Root problem
+`ACE-AQ3D12 = Single-HWND 3D Composition`
 
-AQ3D7 fixed hover/button flicker and AQ3D8-AQ3D10 tried to freeze, hide, and proxy the embedded DX12 child HWND during live resize. The remaining symptom points at the Windows compositor path: a D2D parent HWND, an embedded flip-model DX12 child HWND, and a live resize modal loop can still expose stale viewport pixels while the parent and child are fighting over the same screen region.
+AQ3D12 moves the Environment 3D main path away from the embedded child HWND / separate DX12 swapchain path.
 
-## UE source lesson
+The child DX12 viewport still exists as fallback/debug infrastructure, but it is no longer the default Environment 3D path.
 
-The Unreal source points away from a child-HWND viewport architecture. `SViewport` can render a viewport as part of the Slate draw tree through a viewport texture, and only skips drawing the quad when rendering directly to the backbuffer. `FSceneViewport` also tracks whether it uses a separate render target and responds to Slate renderer pre/post backbuffer resize callbacks. `FSlateRHIRenderer` owns a per-window viewport RHI and resizes it through `ResizeViewportIfNeeded`, with pre/post resize delegates around the RHI resize.
+## Why
 
-The clean long-term direction is therefore a single-window/integrated render path, not a child DX12 HWND under a D2D parent. AQ3D12 is still a smaller patch: it covers the resize flicker without rewriting the whole renderer.
+AQ3D11 proved that the child HWND path is structurally unstable during resize:
 
-## Strategy
+```text
+D2D main HWND
+  + child HWND
+  + flip-model DX12 swapchain
+  + live resize
+  = flicker soup
+```
 
-During live resize:
+Several mitigation attempts were tested:
 
-- the embedded DX12 child HWND is still hidden/quarantined;
-- a no-activate owned popup shield is positioned over the viewport in screen coordinates;
-- the shield paints its own dark proxy/grid through GDI;
-- the shield is armed as early as `WM_NCLBUTTONDOWN` on sizing borders, before the modal resize loop can expose the child area;
-- D2D can continue layout/paint work underneath, but visible viewport flicker is covered by the shield;
-- after `WM_EXITSIZEMOVE`, the DX12 child is restored and rendered once, then the shield is hidden.
+```text
+- hide child during resize
+- D2D resize proxy
+- resize quarantine
+- freeze child at last stable rect
+```
 
-## What this deliberately avoids
+The remaining flicker points to the architecture itself, not a missing if statement. Humanity grieves. Briefly.
 
-- no new 3D visuals;
-- no renderer rewrite;
-- no cognition changes;
-- no Python/Panda/DearPyGui;
-- no moveable panels/docking;
-- no AQ-M16+.
+## New main path
 
-## Limitations
+```text
+AceAquariumRuntimeController
+  -> AceAquariumSceneAdapter
+      -> AceAqRenderPrimitive list
+          -> AceAquariumRealCamera
+              -> CPU view-projection transform
+                  -> Direct2D single-HWND composition
+```
 
-The shield is a pragmatic Win32 workaround. If this still flickers, the next real milestone should be an integrated single-HWND render path where the 3D viewport is not a separate child HWND.
+This keeps:
+
+```text
+- same Aquarium runtime
+- same scene adapter
+- same privacy/debug truth rules
+- same real camera movement math
+- same shell/workspace UI
+```
+
+But removes:
+
+```text
+- child HWND main path
+- child swapchain main path
+- DWM child-window resize flicker
+- resize proxy ping-pong
+```
+
+## Controls
+
+```text
+W/S = camera forward/back
+A/D = camera strafe left/right
+Q/E = world down/up
+RMB drag = mouse look
+Camera Reset = resets the single-HWND camera
+```
+
+Important:
+
+```text
+W/S/A/D use camera-relative vectors.
+Q/E are strict world vertical.
+Diagonal movement remains normalized.
+```
+
+## Rendering
+
+AQ3D12 draws the 3D scene in the main HWND using a CPU projected D2D compositor:
+
+```text
+viewProjection = AceAquariumRealCamera::ViewProjectionMatrix(aspect)
+world primitive center -> clip/NDC -> viewport pixels
+```
+
+Current visual support:
+
+```text
+- projected ground grid
+- projected tiles
+- projected blocks
+- projected agent marker
+- projected direction marker
+- projected highlight marker
+- debug marker only when Debug Truth is enabled
+```
+
+This is not yet a true DX12 offscreen texture compositor. It is the first flicker-safe single-HWND 3D composition path.
+
+## Debug Truth / Privacy
+
+When Debug Truth is OFF:
+
+```text
+- ObjectKind labels are not exposed through the visual path
+- cognition/runtime still uses the same observation path
+```
+
+When Debug Truth is ON:
+
+```text
+- debug markers may render
+- the viewport label explicitly warns:
+  DEBUG TRUTH - NOT AGENT INPUT
+```
+
+## Non-goals
+
+Not included:
+
+```text
+- DX12 offscreen render target interop
+- DirectComposition
+- full RHI rewrite
+- material graph
+- terrain/water/particles
+- editor gizmos
+- asset import
+```
+
+## Validation
+
+Run:
+
+```powershell
+.\Tools\validate_ace_aq3d11.ps1
+.\Tools\validate_ace_aq3d12.ps1
+.\Scripts\build_release.ps1
+```
+
+## Next milestone
+
+`ACE-AQ3D13 = DX12 Offscreen Texture Composition`
+
+Recommended next step:
+
+```text
+- render Scene3DDrawList into an offscreen DX12 texture
+- expose/compose that texture in the main HWND
+- keep child HWND path disabled
+```
+
+
+## AQ3D12R1 bounded grid
+
+AQ3D12 fixed resize flicker by moving the main path to single-HWND composition, but the first projected grid was too broad and behaved like an unstable infinite floor.
+
+AQ3D12R1 changes the single-HWND compositor:
+
+```text
+- derives grid bounds from Aquarium scene primitives
+- ignores old isometric GridLine primitives in this path
+- clamps grid span to avoid giant horizon lines
+- draws only useful in-viewport bounded grid segments
+- keeps the grid under objects and tied to the Aquarium board
+```
+
+This is still the CPU-projected bridge, not the future DX12 offscreen texture compositor.

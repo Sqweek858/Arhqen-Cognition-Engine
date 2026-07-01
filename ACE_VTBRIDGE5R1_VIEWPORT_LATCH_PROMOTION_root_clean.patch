@@ -1,0 +1,97 @@
+diff --git a/Source/Private/Ui/D2D/AceD2DViewportBridgeRuntime.cpp b/Source/Private/Ui/D2D/AceD2DViewportBridgeRuntime.cpp
+index fcf627b..9192bd1 100644
+--- a/Source/Private/Ui/D2D/AceD2DViewportBridgeRuntime.cpp
++++ b/Source/Private/Ui/D2D/AceD2DViewportBridgeRuntime.cpp
+@@ -167,8 +167,30 @@ namespace am::ui
+         {
+             slot->state = AceD2DViewportBridgeSlotState::Presented;
+             slot->presentFrame = stats_.frames;
+-            lastGoodSlot_ = slotIndex;
+-            stats_.lastGoodEpoch = slot->resourceEpoch;
++            if (!lastGoodSlot_.has_value())
++            {
++                lastGoodSlot_ = slotIndex;
++                stats_.lastGoodEpoch = slot->resourceEpoch;
++            }
++            else if (const auto* current = Slot(*lastGoodSlot_))
++            {
++                // ACE-VTBRIDGE5R1: lastGoodSlot_ means "freshest drawable",
++                // not "whatever D2D happened to draw this frame". The previous
++                // VT5 runtime copied the live camera frame into one shared slot,
++                // then MarkDrawCompleted() immediately demoted lastGoodSlot_ back
++                // to the old drawn slot. The result was perfect input counters and
++                // a visually frozen viewport, a tiny masterpiece of self-sabotage.
++                if (slot->resourceEpoch == current->resourceEpoch && slot->copyFrame >= current->copyFrame)
++                {
++                    lastGoodSlot_ = slotIndex;
++                    stats_.lastGoodEpoch = slot->resourceEpoch;
++                }
++            }
++            else
++            {
++                lastGoodSlot_ = slotIndex;
++                stats_.lastGoodEpoch = slot->resourceEpoch;
++            }
+             ++stats_.drawsCompleted;
+         }
+     }
+@@ -179,7 +201,17 @@ namespace am::ui
+         {
+             slot->state = AceD2DViewportBridgeSlotState::Presented;
+             slot->presentFrame = stats_.frames;
+-            lastGoodSlot_ = slotIndex;
++            if (!lastGoodSlot_.has_value())
++            {
++                lastGoodSlot_ = slotIndex;
++            }
++            else if (const auto* current = Slot(*lastGoodSlot_))
++            {
++                if (slot->resourceEpoch == current->resourceEpoch && slot->copyFrame >= current->copyFrame)
++                {
++                    lastGoodSlot_ = slotIndex;
++                }
++            }
+         }
+     }
+ 
+@@ -229,25 +261,26 @@ namespace am::ui
+ 
+     std::optional<std::size_t> AceD2DViewportBridgeRuntime::FindLastGoodSlot(std::uint64_t resourceEpoch) const
+     {
+-        if (lastGoodSlot_.has_value())
+-        {
+-            const auto* slot = Slot(*lastGoodSlot_);
+-            if (slot && slot->resourceEpoch == resourceEpoch &&
+-                (slot->state == AceD2DViewportBridgeSlotState::ReadyForDraw || slot->state == AceD2DViewportBridgeSlotState::Presented))
+-            {
+-                return lastGoodSlot_;
+-            }
+-        }
+         std::optional<std::size_t> best;
+-        std::uint64_t bestFrame = 0;
++        std::uint64_t bestCopyFrame = 0;
++        std::uint64_t bestPresentFrame = 0;
+         for (const auto& slot : slots_)
+         {
+-            if (slot.resourceEpoch == resourceEpoch &&
+-                (slot.state == AceD2DViewportBridgeSlotState::ReadyForDraw || slot.state == AceD2DViewportBridgeSlotState::Presented) &&
+-                slot.copyFrame >= bestFrame)
++            if (slot.resourceEpoch != resourceEpoch ||
++                (slot.state != AceD2DViewportBridgeSlotState::ReadyForDraw && slot.state != AceD2DViewportBridgeSlotState::Presented))
++            {
++                continue;
++            }
++
++            const bool preferSlot = !best.has_value() ||
++                slot.copyFrame > bestCopyFrame ||
++                (slot.copyFrame == bestCopyFrame && slot.presentFrame > bestPresentFrame) ||
++                (slot.copyFrame == bestCopyFrame && slot.presentFrame == bestPresentFrame && lastGoodSlot_.has_value() && *lastGoodSlot_ == slot.index);
++            if (preferSlot)
+             {
+                 best = slot.index;
+-                bestFrame = slot.copyFrame;
++                bestCopyFrame = slot.copyFrame;
++                bestPresentFrame = slot.presentFrame;
+             }
+         }
+         return best;
