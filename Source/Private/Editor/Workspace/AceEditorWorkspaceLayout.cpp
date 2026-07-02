@@ -493,6 +493,37 @@ namespace am::editor
         return normalizeNode(*splitter, 0, error);
     }
 
+    bool EditorWorkspaceLayout::setChildPairRatio(
+        std::string_view splitterId,
+        std::size_t firstChildIndex,
+        std::size_t secondChildIndex,
+        double firstChildRatio,
+        std::string* error)
+    {
+        auto* splitter = findNode(splitterId);
+        if (!splitter || splitter->kind != DockNodeKind::Split || firstChildIndex == secondChildIndex ||
+            firstChildIndex >= splitter->children.size() || secondChildIndex >= splitter->children.size() ||
+            !std::isfinite(firstChildRatio))
+        {
+            fail(error, "Invalid workspace splitter pair resize request");
+            return false;
+        }
+
+        const double pairTotal = splitter->children[firstChildIndex].sizeCoefficient +
+            splitter->children[secondChildIndex].sizeCoefficient;
+        if (!std::isfinite(pairTotal) || pairTotal <= 0.0)
+        {
+            fail(error, "Workspace splitter pair has invalid coefficients");
+            return false;
+        }
+
+        const double minimumRatio = std::min(0.5, kMinimumCoefficient / pairTotal);
+        const double ratio = std::clamp(firstChildRatio, minimumRatio, 1.0 - minimumRatio);
+        splitter->children[firstChildIndex].sizeCoefficient = pairTotal * ratio;
+        splitter->children[secondChildIndex].sizeCoefficient = pairTotal * (1.0 - ratio);
+        return normalizeNode(*splitter, 0, error);
+    }
+
     bool EditorWorkspaceLayout::resetToDefault()
     {
         *this = createDefault();

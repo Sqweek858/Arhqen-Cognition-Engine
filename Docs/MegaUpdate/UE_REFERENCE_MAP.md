@@ -65,3 +65,8 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - UE editor modes build layouts from nested `FTabManager::NewPrimaryArea`, `NewSplitter` and `NewStack` declarations, with stable tab IDs and normalized size coefficients.
 - Representative layouts inspected in `Editor/AnimationEditor/Private/AnimationEditorMode.cpp`, `Editor/BehaviorTreeEditor/Private/BehaviorTreeEditorModes.cpp` and `Editor/AudioEditor/Private/SoundCueEditor.cpp`.
 - ACE adaptation: `EditorWorkspaceLayout` keeps the useful declarative split/stack/tab topology, stable IDs and independent persistence while intentionally omitting floating windows and the much larger global tab-spawner framework until ACE has real consumers for them.
+
+## M2.2 - workspace geometry
+
+- UE's declarative editor layouts separate persistent size coefficients from the actual arranged widget geometry and use splitters as layout-owned boundaries.
+- ACE adaptation: `EditorWorkspaceGeometrySolver` arranges only visible descendants, separates visual and hit rectangles, preserves unrelated coefficients during boundary edits and remains deterministic under impossible/tiny bounds. Rendering and pointer capture remain consumers of this model rather than owners of its math.

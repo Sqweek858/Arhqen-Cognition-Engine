@@ -56,6 +56,8 @@ namespace am::editor
         bool setTabVisible(std::string_view tabId, bool visible, std::string* error = nullptr);
         bool activateTab(std::string_view tabId, std::string* error = nullptr);
         bool setChildCoefficient(std::string_view splitterId, std::size_t childIndex, double coefficient, std::string* error = nullptr);
+        bool setChildPairRatio(std::string_view splitterId, std::size_t firstChildIndex, std::size_t secondChildIndex,
+            double firstChildRatio, std::string* error = nullptr);
         bool resetToDefault();
 
         bool normalizeAndValidate(std::string* error = nullptr);

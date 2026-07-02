@@ -84,3 +84,12 @@
 - Added strict depth/count/identifier/UTF-8 validation and repair of recoverable active-tab or ratio state.
 - Persisted the independent editor layout through the versioned ACE archive and atomic file replacement systems.
 - Added warning-as-error tests for behavior, corruption, missing files, invalid text, round trips and temporary-file cleanup.
+
+## 2026-07-02 - M2.2 workspace geometry and splitter ratios
+
+- Added a deterministic geometry solver for the persistent split/stack/tab workspace tree.
+- Hidden panels collapse fully; a lone visible child fills its parent without a dead separator.
+- Splitters now expose separate one-pixel visual bounds and larger clipped interaction bounds.
+- Added direct splitter/tab hit testing and pair-local ratio edits suitable for pointer-captured dragging.
+- Added minimum-pane distribution and adaptive behavior for physically tiny and even subpixel bounds.
+- Added warning-as-error tests for exact topology, panel visibility, drawer geometry, hit targets, ratios and malformed inputs.

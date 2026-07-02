@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M2 - main Engine editor shell
-- Mini-milestone: M2.1 - versioned editor workspace layout model (complete; ready to commit)
-- Latest known-good commit: `14b596c` (`M1.4d: harden DirectWrite text foundations`)
+- Mini-milestone: M2.2 - deterministic workspace geometry and splitter ratios (complete; ready to commit)
+- Latest known-good commit: `93e0a28` (`M2.1: add versioned editor workspace layout`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -28,10 +28,14 @@
 - Added the canonical viewport, Outliner, Details and hidden Content Browser drawer layout with normalized resize coefficients.
 - Added deterministic tab show/hide/activation, default reset, structural limits and strict identifier/UTF-8 validation.
 - Added versioned, checksummed and atomic editor-layout persistence with safe fallback after missing or corrupt files.
+- Added deterministic rectangle solving for nested visible split/stack/tab nodes with no dead space from hidden panels.
+- Added thin visual splitter rectangles, generous clipped hit zones and direct tab/splitter hit testing.
+- Added pair-local splitter resizing so dragging one boundary preserves unrelated pane ratios.
+- Added minimum pane allocation and adaptive separator thickness for tiny/subpixel window bounds without inverted rectangles.
 
 ## Next action
 
-Commit and push M2.1, then implement the rectangle solver and interactive splitter/tab host used by the visible Engine shell.
+Commit and push M2.2, then add the interactive workspace controller and wire the first visible Engine-mode shell slice.
 
 ## Existing baseline findings
 
@@ -63,3 +67,5 @@ Commit and push M2.1, then implement the rectangle solver and interactive splitt
 - M1.4d MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_editor_workspace_layout.ps1`: PASS (34 behavioral, validation, corruption and persistence checks, `/W4 /WX`).
 - M2.1 MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_editor_workspace_geometry.ps1`: PASS (25 focused geometry, hit-test, visibility, resize and tiny-bounds checks, `/W4 /WX`).
+- M2.2 layout-model regression, MSBuild Debug/Release and CMake Debug: PASS.
