@@ -22,6 +22,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Input\AceInputRouter.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Commands\AceCommandRegistry.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Transactions\AceTransaction.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Workspace\AceEditorWorkspaceLayout.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Core\AceRenderer.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceRenderScene.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceAquariumGpuViewportRenderer.h" />
@@ -172,6 +173,7 @@
     <ClCompile Include="Private\Editor\Input\AceInputRouter.cpp" />
     <ClCompile Include="Private\Editor\Commands\AceCommandRegistry.cpp" />
     <ClCompile Include="Private\Editor\Transactions\AceTransaction.cpp" />
+    <ClCompile Include="Private\Editor\Workspace\AceEditorWorkspaceLayout.cpp" />
     <ClCompile Include="Private\Renderer\Core\AceRenderer.cpp" />
     <ClCompile Include="Private\Renderer\Scene\AceRenderScene.cpp" />
     <ClCompile Include="Private\Renderer\Scene\AceAquariumGpuViewportRenderer.cpp" />

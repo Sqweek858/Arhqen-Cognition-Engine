@@ -75,3 +75,12 @@
 - Added pixel-snapped text origins and surrogate-safe behavior for the legacy string-returning ellipsis helper.
 - Added monotonic font/style generations for future live theme and resource invalidation.
 - Added a warning-as-error probe for real DirectWrite layouts, Romanian/Unicode text, native trimming, caret hit testing, cache invalidation and bounded eviction.
+
+## 2026-07-02 - M2.1 editor workspace layout model
+
+- Added a compact Slate-inspired split/stack/tab tree with stable node and tab identifiers.
+- Added the default Engine workspace topology: central viewport, right Outliner/Details split and hidden lower Content Browser drawer.
+- Added deterministic show/hide/activation, normalized direct resize ratios, reset and recursive visibility queries.
+- Added strict depth/count/identifier/UTF-8 validation and repair of recoverable active-tab or ratio state.
+- Persisted the independent editor layout through the versioned ACE archive and atomic file replacement systems.
+- Added warning-as-error tests for behavior, corruption, missing files, invalid text, round trips and temporary-file cleanup.

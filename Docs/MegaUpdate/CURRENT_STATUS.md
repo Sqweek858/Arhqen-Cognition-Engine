@@ -4,9 +4,9 @@
 
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
-- Macro milestone: M1 - core foundations
-- Mini-milestone: M1.4d - DirectWrite text/style/layout quality gates (complete; ready to commit)
-- Latest known-good commit: `a9bb308` (`M1.4c: replace resize handles with persistent panel edges`)
+- Macro milestone: M2 - main Engine editor shell
+- Mini-milestone: M2.1 - versioned editor workspace layout model (complete; ready to commit)
+- Latest known-good commit: `14b596c` (`M1.4d: harden DirectWrite text foundations`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -24,10 +24,14 @@
 - Replaced draw-time UTF-16 slicing with native DirectWrite character trimming and a real ellipsis inline object.
 - Added defensive dimension normalization, failed-layout cache rejection and pixel-snapped text origins.
 - Added monotonic style/font generations for deterministic live resource invalidation.
+- Added a Slate-inspired split/stack/tab workspace tree for the Engine editor without exposing unfinished UI.
+- Added the canonical viewport, Outliner, Details and hidden Content Browser drawer layout with normalized resize coefficients.
+- Added deterministic tab show/hide/activation, default reset, structural limits and strict identifier/UTF-8 validation.
+- Added versioned, checksummed and atomic editor-layout persistence with safe fallback after missing or corrupt files.
 
 ## Next action
 
-Commit and push M1.4d, then begin M2 with the Engine-mode editor shell and reusable dock/split/tab layout model.
+Commit and push M2.1, then implement the rectangle solver and interactive splitter/tab host used by the visible Engine shell.
 
 ## Existing baseline findings
 
@@ -57,3 +61,5 @@ Commit and push M1.4d, then begin M2 with the Engine-mode editor shell and reusa
 - `validate_ace_text_foundation.ps1`: PASS (17 live DirectWrite/cache/style checks plus draw-path assertions, `/W4 /WX`).
 - `validate_ace_ui5_ui11_aqui1.ps1`, `validate_ace_perf2r3.ps1` and `validate_ace_panel_resize.ps1`: PASS after M1.4d.
 - M1.4d MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_editor_workspace_layout.ps1`: PASS (34 behavioral, validation, corruption and persistence checks, `/W4 /WX`).
+- M2.1 MSBuild Debug/Release and CMake Debug: PASS.

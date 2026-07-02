@@ -13,6 +13,7 @@ Populate exact commands/results during M0. Every mini-milestone adds or updates 
 | Input routing | 13 z-order/focus/capture/modal checks PASS | MSBuild + CMake registration PASS | PASS | PASS | N/A | N/A | M1.4b ready |
 | Global panel resize | 13 edge/bounds/persistence checks PASS | Aquarium shell integrated | PASS | PASS | Manual visual pending | No per-move disk writes | M1.4c ready |
 | UI text/style quality | 17 live DirectWrite/cache/style checks PASS | Existing UI/selection/resize probes PASS | PASS | PASS | Manual visual pending | LRU bounded; failed layouts not cached | M1.4d ready |
+| Editor workspace layout | 34 model/validation/persistence checks PASS | MSBuild + CMake registration PASS | PASS | PASS | Not exposed yet | 1 MiB/depth/node/tab bounds | M2.1 ready |
 | Assets/scenes | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Materials/shaders | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Rendering/GI | TBD | TBD | TBD | TBD | TBD | TBD | Not started |

@@ -59,3 +59,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 
 - Slate splitters use a narrow visual separator with a larger interaction area, explicit mouse capture and layout-owned sizing.
 - ACE adaptation: `PanelResizePolicy` separates invisible hit slop, edge/corner classification, cursor choice and physical-bound clamping from individual panels. Aquarium Details/Logs now use side and bottom edges, persist only the completed drag, and no longer render corner buttons.
+
+## M2.1 - editor workspace layout
+
+- UE editor modes build layouts from nested `FTabManager::NewPrimaryArea`, `NewSplitter` and `NewStack` declarations, with stable tab IDs and normalized size coefficients.
+- Representative layouts inspected in `Editor/AnimationEditor/Private/AnimationEditorMode.cpp`, `Editor/BehaviorTreeEditor/Private/BehaviorTreeEditorModes.cpp` and `Editor/AudioEditor/Private/SoundCueEditor.cpp`.
+- ACE adaptation: `EditorWorkspaceLayout` keeps the useful declarative split/stack/tab topology, stable IDs and independent persistence while intentionally omitting floating windows and the much larger global tab-spawner framework until ACE has real consumers for them.
