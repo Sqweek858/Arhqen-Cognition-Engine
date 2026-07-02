@@ -70,3 +70,8 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 
 - UE's declarative editor layouts separate persistent size coefficients from the actual arranged widget geometry and use splitters as layout-owned boundaries.
 - ACE adaptation: `EditorWorkspaceGeometrySolver` arranges only visible descendants, separates visual and hit rectangles, preserves unrelated coefficients during boundary edits and remains deterministic under impossible/tiny bounds. Rendering and pointer capture remain consumers of this model rather than owners of its math.
+
+## M2.3a - workspace interaction
+
+- Slate's splitter interaction keeps capture ownership explicit, updates layout while dragging and treats release/cancel as distinct lifecycle boundaries.
+- ACE adaptation: `EditorWorkspaceController` owns that lifecycle over the pure model/geometry layers. It never writes during pointer movement, emits a one-shot commit request after release, and restores a full pre-drag snapshot on cancellation or window rearrangement.

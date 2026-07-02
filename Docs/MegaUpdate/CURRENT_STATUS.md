@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M2 - main Engine editor shell
-- Mini-milestone: M2.2 - deterministic workspace geometry and splitter ratios (complete; ready to commit)
-- Latest known-good commit: `93e0a28` (`M2.1: add versioned editor workspace layout`)
+- Mini-milestone: M2.3a - workspace pointer interaction and commit boundaries (complete; ready to commit)
+- Latest known-good commit: `8a27a63` (`M2.2: solve editor workspace geometry`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -32,10 +32,14 @@
 - Added thin visual splitter rectangles, generous clipped hit zones and direct tab/splitter hit testing.
 - Added pair-local splitter resizing so dragging one boundary preserves unrelated pane ratios.
 - Added minimum pane allocation and adaptive separator thickness for tiny/subpixel window bounds without inverted rectangles.
+- Added an interaction controller with splitter capture, live geometry rebuilds and orientation-correct cursors.
+- Splitter movement remains in memory until mouse-up requests exactly one persistence commit; no-op clicks do not write.
+- Cancel/Escape and window rearrangement restore the exact pre-drag layout and prior dirty/commit state.
+- Tab activation, panel visibility and layout reset now share the same deterministic dirty/commit contract.
 
 ## Next action
 
-Commit and push M2.2, then add the interactive workspace controller and wire the first visible Engine-mode shell slice.
+Commit and push M2.3a, then wire the first visible Engine-mode shell slice into the existing single-HWND D2D composition path.
 
 ## Existing baseline findings
 
@@ -69,3 +73,5 @@ Commit and push M2.2, then add the interactive workspace controller and wire the
 - M2.1 MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_editor_workspace_geometry.ps1`: PASS (25 focused geometry, hit-test, visibility, resize and tiny-bounds checks, `/W4 /WX`).
 - M2.2 layout-model regression, MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_editor_workspace_controller.ps1`: PASS (31 capture, drag, cancel, cursor, tab and commit-boundary checks, `/W4 /WX`).
+- M2.3a MSBuild Debug/Release and CMake Debug: PASS.

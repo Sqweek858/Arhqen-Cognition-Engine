@@ -93,3 +93,12 @@
 - Added direct splitter/tab hit testing and pair-local ratio edits suitable for pointer-captured dragging.
 - Added minimum-pane distribution and adaptive behavior for physically tiny and even subpixel bounds.
 - Added warning-as-error tests for exact topology, panel visibility, drawer geometry, hit targets, ratios and malformed inputs.
+
+## 2026-07-02 - M2.3a workspace interaction controller
+
+- Added splitter pointer capture with orientation-correct hover and captured cursors.
+- Rebuilds geometry during drag while deferring persistence until one mouse-up commit request.
+- No-op clicks remain clean and never request a disk write.
+- Cancel and window rearrangement restore the exact pre-drag layout plus previous dirty/commit state.
+- Tab activation, panel visibility and reset now use the same controller-owned mutation boundary.
+- Added warning-as-error tests for pointer lifecycle, invalid input, cursor behavior and one-shot commits.
