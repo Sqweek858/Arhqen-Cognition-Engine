@@ -18,12 +18,22 @@ namespace am::ui
         bool inspectorCollapsed = false;
         bool diagnosticsPinned = false;
         std::wstring activeWorkspaceTab = L"snapshot";
+        float aquariumDetailsWidth = 430.0f;
+        float aquariumDetailsHeight = 850.0f;
+        float aquariumLogsWidth = 370.0f;
+        float aquariumLogsHeight = 850.0f;
+        bool aquariumDetailsVisible = true;
+        bool aquariumLogsVisible = true;
 
         void clamp()
         {
             sidebarWidth = std::clamp(sidebarWidth, 72.0f, 420.0f);
             workspaceRatio = std::clamp(workspaceRatio, 0.18f, 0.42f);
             inspectorRatio = std::clamp(inspectorRatio, 0.34f, 0.72f);
+            aquariumDetailsWidth = std::max(120.0f, aquariumDetailsWidth);
+            aquariumDetailsHeight = std::max(160.0f, aquariumDetailsHeight);
+            aquariumLogsWidth = std::max(120.0f, aquariumLogsWidth);
+            aquariumLogsHeight = std::max(160.0f, aquariumLogsHeight);
         }
 
         static D2DDockLayoutProfile defaults()

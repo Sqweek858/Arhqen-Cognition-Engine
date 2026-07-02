@@ -86,6 +86,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\AceUiInvalidationRoot.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\AceUiRetainedLayout.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\AceUiStyleSet.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\AcePanelResizePolicy.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\UiEventTypes.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\UiFramework.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Ui\Core\UiLayoutPrimitives.h" />
@@ -255,6 +256,7 @@
     <ClCompile Include="Private\Ui\Core\AceUiInvalidationRoot.cpp" />
     <ClCompile Include="Private\Ui\Core\AceUiRetainedLayout.cpp" />
     <ClCompile Include="Private\Ui\Core\AceUiStyleSet.cpp" />
+    <ClCompile Include="Private\Ui\Core\AcePanelResizePolicy.cpp" />
     <ClCompile Include="Private\Ui\D2D\D2DAutocompletePopup.cpp" />
     <ClCompile Include="Private\Ui\D2D\D2DBlurRuntime.cpp" />
     <ClCompile Include="Private\Ui\D2D\D2DCachedEffects.cpp" />

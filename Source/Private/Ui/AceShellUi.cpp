@@ -4263,36 +4263,6 @@ namespace am::ui
         D2DWidgetUtils::drawTextEx(ctx, label, FontRole::Small, rect, (active || hovered) ? ctx.brushes.text : ctx.brushes.muted, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     }
 
-    void AceShellUi::renderAquariumResizeHandle(D2DRenderContext& ctx, UiRect rect, bool leftPanelHandle)
-    {
-        if (rect.empty())
-        {
-            return;
-        }
-
-        const bool active = (leftPanelHandle && aquariumPanelResizeTarget_ == AquariumPanelResizeTarget::LeftDetails) ||
-            (!leftPanelHandle && aquariumPanelResizeTarget_ == AquariumPanelResizeTarget::RightLogs);
-        const bool hovered = rect.contains(mouseX_, mouseY_);
-        D2DWidgetUtils::fillRounded(ctx, rect, 5.0f, ctx.brushes.panelDeep, hovered || active ? ctx.brushes.accent : ctx.brushes.borderDim, 1.0f);
-
-        const float oldOpacity = ctx.brushes.accent ? ctx.brushes.accent->GetOpacity() : 1.0f;
-        if (ctx.brushes.accent)
-        {
-            ctx.brushes.accent->SetOpacity(active ? 0.88f : (hovered ? 0.62f : 0.36f));
-            const float x0 = leftPanelHandle ? rect.left + 5.0f : rect.right - 8.0f;
-            const float x1 = leftPanelHandle ? rect.left + 8.0f : rect.right - 5.0f;
-            for (int i = 0; i < 3; ++i)
-            {
-                const float y = rect.bottom - 5.0f - static_cast<float>(i) * 4.0f;
-                const UiRect mark = leftPanelHandle
-                    ? makeUiRect(x0 + static_cast<float>(i) * 3.0f, y, rect.right - 4.0f, y + 1.5f)
-                    : makeUiRect(rect.left + 4.0f, y, x1 - static_cast<float>(i) * 3.0f, y + 1.5f);
-                D2DWidgetUtils::fillRounded(ctx, mark, 1.0f, ctx.brushes.accent);
-            }
-            ctx.brushes.accent->SetOpacity(oldOpacity);
-        }
-    }
-
     void AceShellUi::clampAquariumScroll(AquariumScrollPanel& scroll)
     {
         scroll.maxScroll = std::max(0.0f, scroll.contentHeight - scroll.viewportHeight);
@@ -4610,17 +4580,24 @@ namespace am::ui
             return false;
         }
 
-        if (aquariumLeftResizeHandleRect_.contains(x, y))
+        aquariumPanelResizeEdges_ = PanelResizePolicy::hitTest(
+            aquariumLeftPanelRect_, x, y, PanelResizeEdge::Right | PanelResizeEdge::Bottom);
+        if (aquariumPanelResizeEdges_ != PanelResizeEdge::None)
         {
             aquariumPanelResizeTarget_ = AquariumPanelResizeTarget::LeftDetails;
         }
-        else if (aquariumRightResizeHandleRect_.contains(x, y))
-        {
-            aquariumPanelResizeTarget_ = AquariumPanelResizeTarget::RightLogs;
-        }
         else
         {
-            return false;
+            aquariumPanelResizeEdges_ = PanelResizePolicy::hitTest(
+                aquariumRightLogsPanelRect_, x, y, PanelResizeEdge::Left | PanelResizeEdge::Bottom);
+            if (aquariumPanelResizeEdges_ != PanelResizeEdge::None)
+            {
+                aquariumPanelResizeTarget_ = AquariumPanelResizeTarget::RightLogs;
+            }
+            else
+            {
+                return false;
+            }
         }
 
         aquariumPanelResizeStartX_ = x;
@@ -4647,8 +4624,12 @@ namespace am::ui
 
         if (aquariumPanelResizeTarget_ == AquariumPanelResizeTarget::LeftDetails)
         {
-            const float requestedWidth = aquariumPanelResizeStartState_.detailsWidth + (x - aquariumPanelResizeStartX_);
-            const float requestedHeight = aquariumPanelResizeStartState_.detailsHeight + (y - aquariumPanelResizeStartY_);
+            const float requestedWidth = hasEdge(aquariumPanelResizeEdges_, PanelResizeEdge::Right)
+                ? aquariumPanelResizeStartState_.detailsWidth + (x - aquariumPanelResizeStartX_)
+                : aquariumPanelResizeStartState_.detailsWidth;
+            const float requestedHeight = hasEdge(aquariumPanelResizeEdges_, PanelResizeEdge::Bottom)
+                ? aquariumPanelResizeStartState_.detailsHeight + (y - aquariumPanelResizeStartY_)
+                : aquariumPanelResizeStartState_.detailsHeight;
             environment3DMode_.ResizeLeftPanel(aquarium3DPanelState_, requestedWidth, requestedHeight, static_cast<float>(width_), static_cast<float>(height_));
             aquariumResizeQuarantineActive_ = true;
             aquariumResizeQuarantineDelaySeconds_ = 0.18f;
@@ -4659,8 +4640,12 @@ namespace am::ui
 
         if (aquariumPanelResizeTarget_ == AquariumPanelResizeTarget::RightLogs)
         {
-            const float requestedWidth = aquariumPanelResizeStartState_.logsWidth - (x - aquariumPanelResizeStartX_);
-            const float requestedHeight = aquariumPanelResizeStartState_.logsHeight + (y - aquariumPanelResizeStartY_);
+            const float requestedWidth = hasEdge(aquariumPanelResizeEdges_, PanelResizeEdge::Left)
+                ? aquariumPanelResizeStartState_.logsWidth - (x - aquariumPanelResizeStartX_)
+                : aquariumPanelResizeStartState_.logsWidth;
+            const float requestedHeight = hasEdge(aquariumPanelResizeEdges_, PanelResizeEdge::Bottom)
+                ? aquariumPanelResizeStartState_.logsHeight + (y - aquariumPanelResizeStartY_)
+                : aquariumPanelResizeStartState_.logsHeight;
             environment3DMode_.ResizeRightPanel(aquarium3DPanelState_, requestedWidth, requestedHeight, static_cast<float>(width_), static_cast<float>(height_));
             aquariumResizeQuarantineActive_ = true;
             aquariumResizeQuarantineDelaySeconds_ = 0.18f;
@@ -4675,8 +4660,18 @@ namespace am::ui
     void AceShellUi::endAquariumPanelResize()
     {
         aquariumPanelResizeTarget_ = AquariumPanelResizeTarget::None;
+        aquariumPanelResizeEdges_ = PanelResizeEdge::None;
         aquariumPanelResizeStartX_ = 0.0f;
         aquariumPanelResizeStartY_ = 0.0f;
+        layoutProfile_.aquariumDetailsWidth = aquarium3DPanelState_.detailsWidth;
+        layoutProfile_.aquariumDetailsHeight = aquarium3DPanelState_.detailsHeight;
+        layoutProfile_.aquariumLogsWidth = aquarium3DPanelState_.logsWidth;
+        layoutProfile_.aquariumLogsHeight = aquarium3DPanelState_.logsHeight;
+        if (!layoutProfilePath_.empty())
+        {
+            std::string ignoredError;
+            D2DLayoutPersistence::save(layoutProfilePath_, layoutProfile_, &ignoredError);
+        }
         if (environmentOpen_ && aquarium3DModeActive_ && aquariumEmbeddedViewportVisible_)
         {
             aquariumResizeQuarantineActive_ = true;
@@ -5247,7 +5242,6 @@ namespace am::ui
                 ctx.target->PopAxisAlignedClip();
             }
 
-            renderAquariumResizeHandle(ctx, aquariumLeftResizeHandleRect_, true);
         }
         else
         {
@@ -5267,7 +5261,6 @@ namespace am::ui
             {
                 ctx.target->PopAxisAlignedClip();
             }
-            renderAquariumResizeHandle(ctx, aquariumRightResizeHandleRect_, false);
         }
     }
 
@@ -8199,6 +8192,12 @@ namespace am::ui
 
         std::string error;
         layoutProfile_.activeWorkspaceTab = workspaceTabs_.active();
+        layoutProfile_.aquariumDetailsWidth = aquarium3DPanelState_.detailsWidth;
+        layoutProfile_.aquariumDetailsHeight = aquarium3DPanelState_.detailsHeight;
+        layoutProfile_.aquariumLogsWidth = aquarium3DPanelState_.logsWidth;
+        layoutProfile_.aquariumLogsHeight = aquarium3DPanelState_.logsHeight;
+        layoutProfile_.aquariumDetailsVisible = aquariumDetailsPanelVisible_;
+        layoutProfile_.aquariumLogsVisible = aquariumLogsPanelVisible_;
 
         if (D2DLayoutPersistence::save(layoutProfilePath_, layoutProfile_, &error))
         {
@@ -8224,6 +8223,14 @@ namespace am::ui
         {
             layoutProfile_ = *loaded;
             layoutProfile_.clamp();
+            aquarium3DPanelState_.detailsWidth = layoutProfile_.aquariumDetailsWidth;
+            aquarium3DPanelState_.detailsHeight = layoutProfile_.aquariumDetailsHeight;
+            aquarium3DPanelState_.logsWidth = layoutProfile_.aquariumLogsWidth;
+            aquarium3DPanelState_.logsHeight = layoutProfile_.aquariumLogsHeight;
+            aquariumDetailsPanelVisible_ = layoutProfile_.aquariumDetailsVisible;
+            aquariumLogsPanelVisible_ = layoutProfile_.aquariumLogsVisible;
+            aquarium3DPanelState_.detailsVisible = aquariumDetailsPanelVisible_;
+            aquarium3DPanelState_.logsVisible = aquariumLogsPanelVisible_;
 
             if (!layoutProfile_.activeWorkspaceTab.empty())
             {
@@ -9172,13 +9179,27 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
         const float x = static_cast<float>(p.x);
         const float y = static_cast<float>(p.y);
 
-        if (environmentOpen_ && aquarium3DModeActive_ && aquariumLeftResizeHandleRect_.contains(x, y))
+        PanelResizeEdge resizeEdges = aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None
+            ? aquariumPanelResizeEdges_
+            : PanelResizeEdge::None;
+        if (resizeEdges == PanelResizeEdge::None && environmentOpen_ && aquarium3DModeActive_)
         {
-            SetCursor(LoadCursorW(nullptr, IDC_SIZENWSE));
+            resizeEdges = PanelResizePolicy::hitTest(
+                aquariumLeftPanelRect_, x, y, PanelResizeEdge::Right | PanelResizeEdge::Bottom);
+            if (resizeEdges == PanelResizeEdge::None)
+            {
+                resizeEdges = PanelResizePolicy::hitTest(
+                    aquariumRightLogsPanelRect_, x, y, PanelResizeEdge::Left | PanelResizeEdge::Bottom);
+            }
         }
-        else if (environmentOpen_ && aquarium3DModeActive_ && aquariumRightResizeHandleRect_.contains(x, y))
+        const PanelResizeCursor resizeCursor = PanelResizePolicy::cursor(resizeEdges);
+        if (resizeCursor != PanelResizeCursor::Arrow)
         {
-            SetCursor(LoadCursorW(nullptr, IDC_SIZENESW));
+            LPCWSTR cursorId = IDC_SIZEWE;
+            if (resizeCursor == PanelResizeCursor::Vertical) cursorId = IDC_SIZENS;
+            else if (resizeCursor == PanelResizeCursor::DiagonalNorthWestSouthEast) cursorId = IDC_SIZENWSE;
+            else if (resizeCursor == PanelResizeCursor::DiagonalNorthEastSouthWest) cursorId = IDC_SIZENESW;
+            SetCursor(LoadCursorW(nullptr, cursorId));
         }
         else if (commandPalette_.active())
         {

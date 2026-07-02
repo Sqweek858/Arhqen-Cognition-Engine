@@ -94,6 +94,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Ui/Core/AceUiInvalidationRoot.cpp
     Source/Private/Ui/Core/AceUiRetainedLayout.cpp
     Source/Private/Ui/Core/AceUiStyleSet.cpp
+    Source/Private/Ui/Core/AcePanelResizePolicy.cpp
     Source/Private/Ui/D2D/D2DAutocompletePopup.cpp
     Source/Private/Ui/D2D/D2DBlurRuntime.cpp
     Source/Private/Ui/D2D/D2DCachedEffects.cpp

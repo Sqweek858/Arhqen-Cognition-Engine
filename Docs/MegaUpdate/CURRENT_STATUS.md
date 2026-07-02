@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M1 — core foundations
-- Mini-milestone: M1.4b — centralized input routing and capture (complete; ready to commit)
-- Latest known-good commit: `a1b8e04` (`M1.4a: add contextual editor command registry`)
+- Mini-milestone: M1.4c — reusable edge resize and persisted panel dimensions (complete; ready to commit)
+- Latest known-good commit: `ef52b83` (`M1.4b: add centralized input routing`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -31,10 +31,12 @@
 - Added central grouped transactions, reverse-order undo, forward-order redo, cancel/revert, scoped RAII and bounded history.
 - Added a centralized editor command registry with metadata, dynamic state, contextual shortcuts, rebinding, search and conflict detection.
 - Added centralized z-ordered input routing with focus, pointer capture, modal barriers, lifecycle repair and command fallback.
+- Removed visible Aquarium corner resize handles and replaced them with reusable invisible side/bottom/corner hit zones and correct cursors.
+- Removed the artificial 500x920 panel cap; sizes now stop only at layout bounds and recoverable minimums, then persist in the layout profile.
 
 ## Next action
 
-Commit and push M1.4b, then implement M1.4c reusable edge-resize/layout persistence primitives and integrate them into the existing shell.
+Commit and push M1.4c, then complete M1.4d text/style/layout quality gates before beginning the M2 editor shell.
 
 ## Existing baseline findings
 
@@ -73,4 +75,6 @@ Commit and push M1.4b, then implement M1.4c reusable edge-resize/layout persiste
 - M1.4a MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_input_router.ps1`: PASS (13 focused checks, `/W4 /WX`).
 - M1.4b MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_panel_resize.ps1`: PASS (13 behavioral/persistence checks plus shell integration assertion, `/W4 /WX`).
+- M1.4c MSBuild Debug/Release and CMake Debug: PASS.
 - Known stale failures are recorded above and are not hidden.

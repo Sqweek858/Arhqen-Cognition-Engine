@@ -28,6 +28,12 @@ namespace am::ui
             out << "inspectorCollapsed=" << boolText(profile.inspectorCollapsed) << "\n";
             out << "diagnosticsPinned=" << boolText(profile.diagnosticsPinned) << "\n";
             out << "activeWorkspaceTab=" << narrow(profile.activeWorkspaceTab) << "\n";
+            out << "aquariumDetailsWidth=" << profile.aquariumDetailsWidth << "\n";
+            out << "aquariumDetailsHeight=" << profile.aquariumDetailsHeight << "\n";
+            out << "aquariumLogsWidth=" << profile.aquariumLogsWidth << "\n";
+            out << "aquariumLogsHeight=" << profile.aquariumLogsHeight << "\n";
+            out << "aquariumDetailsVisible=" << boolText(profile.aquariumDetailsVisible) << "\n";
+            out << "aquariumLogsVisible=" << boolText(profile.aquariumLogsVisible) << "\n";
 
             return true;
         }
@@ -82,6 +88,12 @@ namespace am::ui
             if (values.count("inspectorCollapsed")) { profile.inspectorCollapsed = parseBool(values["inspectorCollapsed"]); }
             if (values.count("diagnosticsPinned")) { profile.diagnosticsPinned = parseBool(values["diagnosticsPinned"]); }
             if (values.count("activeWorkspaceTab")) { profile.activeWorkspaceTab = widen(values["activeWorkspaceTab"]); }
+            if (values.count("aquariumDetailsWidth")) { profile.aquariumDetailsWidth = std::stof(values["aquariumDetailsWidth"]); }
+            if (values.count("aquariumDetailsHeight")) { profile.aquariumDetailsHeight = std::stof(values["aquariumDetailsHeight"]); }
+            if (values.count("aquariumLogsWidth")) { profile.aquariumLogsWidth = std::stof(values["aquariumLogsWidth"]); }
+            if (values.count("aquariumLogsHeight")) { profile.aquariumLogsHeight = std::stof(values["aquariumLogsHeight"]); }
+            if (values.count("aquariumDetailsVisible")) { profile.aquariumDetailsVisible = parseBool(values["aquariumDetailsVisible"]); }
+            if (values.count("aquariumLogsVisible")) { profile.aquariumLogsVisible = parseBool(values["aquariumLogsVisible"]); }
 
             profile.clamp();
             return profile;

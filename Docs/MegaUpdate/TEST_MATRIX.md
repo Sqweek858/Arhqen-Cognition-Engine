@@ -11,6 +11,7 @@ Populate exact commands/results during M0. Every mini-milestone adds or updates 
 | Transactions | 21 ordering/group/cancel/budget checks PASS | MSBuild + CMake registration PASS | PASS | PASS | N/A | Bounded history | M1.3 ready |
 | Editor commands | 18 registry/context/conflict checks PASS | MSBuild + CMake registration PASS | PASS | PASS | N/A | N/A | M1.4a ready |
 | Input routing | 13 z-order/focus/capture/modal checks PASS | MSBuild + CMake registration PASS | PASS | PASS | N/A | N/A | M1.4b ready |
+| Global panel resize | 13 edge/bounds/persistence checks PASS | Aquarium shell integrated | PASS | PASS | Manual visual pending | No per-move disk writes | M1.4c ready |
 | UI/text/input | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Assets/scenes | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Materials/shaders | TBD | TBD | TBD | TBD | TBD | TBD | Not started |

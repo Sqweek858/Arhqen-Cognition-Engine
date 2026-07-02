@@ -32,12 +32,8 @@ namespace ace::aquarium_ui
         float ButtonHeight = 30.0f;
         float ButtonGap = 9.0f;
         float RowGap = 9.0f;
-        float ResizeHandleSize = 20.0f;
-        float ResizeHandlePad = 8.0f;
-        float MinPanelWidth = 326.0f;
-        float MaxPanelWidth = 500.0f;
-        float MinPanelHeight = 790.0f;
-        float MaxPanelHeight = 920.0f;
+        float MinPanelWidth = 120.0f;
+        float MinPanelHeight = 160.0f;
         float RuntimeSectionHeight = 124.0f;
         float ScenarioPlannerSectionHeight = 72.0f;
         float MainControlsSectionHeight = 156.0f;

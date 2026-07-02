@@ -129,17 +129,12 @@ namespace ace::aquarium_ui
             const float panelH = std::min(state.detailsHeight, maxPanelH);
             out.leftPanel = rect(c.WindowPad, panelTop, c.WindowPad + state.detailsWidth, panelTop + panelH);
             out.leftPanelTitle = rect(out.leftPanel.left + 14.0f, out.leftPanel.top + 9.0f, out.leftPanel.right - 14.0f, out.leftPanel.top + 32.0f);
-            out.leftResizeHandle = rect(
-                out.leftPanel.right - c.ResizeHandleSize - c.ResizeHandlePad,
-                out.leftPanel.bottom - c.ResizeHandleSize - c.ResizeHandlePad,
-                out.leftPanel.right - c.ResizeHandlePad,
-                out.leftPanel.bottom - c.ResizeHandlePad
-            );
+            out.leftResizeHandle = {};
             out.leftContentClip = rect(
                 out.leftPanel.left + c.PanelInset,
                 out.leftPanel.top + c.PanelTitleHeight + 8.0f,
                 out.leftPanel.right - c.PanelInset,
-                out.leftResizeHandle.top - c.ResizeHandlePad
+                out.leftPanel.bottom - c.PanelInset
             );
 
             float y = out.leftContentClip.top;
@@ -196,17 +191,12 @@ namespace ace::aquarium_ui
             const float panelH = std::min(state.logsHeight, maxPanelH);
             out.rightLogsPanel = rect(width - c.WindowPad - state.logsWidth, panelTop, width - c.WindowPad, panelTop + panelH);
             out.rightLogsTitle = rect(out.rightLogsPanel.left + 14.0f, out.rightLogsPanel.top + 9.0f, out.rightLogsPanel.right - 14.0f, out.rightLogsPanel.top + 32.0f);
-            out.rightResizeHandle = rect(
-                out.rightLogsPanel.left + c.ResizeHandlePad,
-                out.rightLogsPanel.bottom - c.ResizeHandleSize - c.ResizeHandlePad,
-                out.rightLogsPanel.left + c.ResizeHandlePad + c.ResizeHandleSize,
-                out.rightLogsPanel.bottom - c.ResizeHandlePad
-            );
+            out.rightResizeHandle = {};
             out.rightLogsContent = rect(
                 out.rightLogsPanel.left + 9.0f,
                 out.rightLogsPanel.top + c.PanelTitleHeight + 6.0f,
                 out.rightLogsPanel.right - 9.0f,
-                out.rightResizeHandle.top - c.ResizeHandlePad
+                out.rightLogsPanel.bottom - c.PanelInset
             );
             out.rightLogsViewport = rect(
                 out.rightLogsContent.left + 10.0f,
@@ -240,14 +230,14 @@ namespace ace::aquarium_ui
         const auto& c = Constants();
         const float width = std::max(920.0f, clientWidth);
         const float height = std::max(660.0f, clientHeight);
-        const float availableW = std::max(1.0f, width - (c.WindowPad * 2.0f) - (c.PanelGap * 2.0f));
+        const float availableW = std::max(c.MinPanelWidth, width - (c.WindowPad * 2.0f) - c.PanelGap);
         const float availableH = std::max(c.MinPanelHeight, height - c.TopbarHeight - (c.WindowPad * 2.0f));
-        const float maxEachW = std::min(c.MaxPanelWidth, availableW * 0.36f);
-
-        panelState.detailsWidth = std::clamp(panelState.detailsWidth, c.MinPanelWidth, maxEachW);
-        panelState.logsWidth = std::clamp(panelState.logsWidth, c.MinPanelWidth, maxEachW);
-        panelState.detailsHeight = std::clamp(panelState.detailsHeight, c.MinPanelHeight, std::min(c.MaxPanelHeight, availableH));
-        panelState.logsHeight = std::clamp(panelState.logsHeight, c.MinPanelHeight, std::min(c.MaxPanelHeight, availableH));
+        const float reservedForLogs = panelState.logsVisible ? c.MinPanelWidth + c.PanelGap : 0.0f;
+        panelState.detailsWidth = std::clamp(panelState.detailsWidth, c.MinPanelWidth, std::max(c.MinPanelWidth, availableW - reservedForLogs));
+        const float reservedForDetails = panelState.detailsVisible ? panelState.detailsWidth + c.PanelGap : 0.0f;
+        panelState.logsWidth = std::clamp(panelState.logsWidth, c.MinPanelWidth, std::max(c.MinPanelWidth, availableW - reservedForDetails));
+        panelState.detailsHeight = std::clamp(panelState.detailsHeight, c.MinPanelHeight, availableH);
+        panelState.logsHeight = std::clamp(panelState.logsHeight, c.MinPanelHeight, availableH);
     }
 
     void AceEnvironment3DMode::ResizeLeftPanel(AceEnvironment3DPanelState& panelState, float requestedWidth, float requestedHeight, float clientWidth, float clientHeight) const

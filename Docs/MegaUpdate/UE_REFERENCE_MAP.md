@@ -54,3 +54,8 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 
 - Slate's useful architectural boundary is a single routed event path with explicit handled replies, focus ownership, mouse capture and higher-layer popup/modal precedence.
 - ACE adaptation: `InputRouter` owns those lifetimes and invokes `CommandRegistry` only after the focused target declines a key event. Capture and focus are repaired on release, disable, unregister, modal activation and window deactivation.
+
+## M1.4c — panel edge resize
+
+- Slate splitters use a narrow visual separator with a larger interaction area, explicit mouse capture and layout-owned sizing.
+- ACE adaptation: `PanelResizePolicy` separates invisible hit slop, edge/corner classification, cursor choice and physical-bound clamping from individual panels. Aquarium Details/Logs now use side and bottom edges, persist only the completed drag, and no longer render corner buttons.

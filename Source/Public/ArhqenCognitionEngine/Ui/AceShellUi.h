@@ -55,6 +55,7 @@
 #include "ArhqenCognitionEngine/Ui/Core/AceUiInvalidationRoot.h"
 #include "ArhqenCognitionEngine/Ui/Core/AceUiRetainedLayout.h"
 #include "ArhqenCognitionEngine/Ui/Core/AceUiStyleSet.h"
+#include "ArhqenCognitionEngine/Ui/Core/AcePanelResizePolicy.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DDrawCommandBuffer.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DUiDebugOverlay.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DAquariumTelemetryWidgets.h"
@@ -156,7 +157,6 @@ namespace am::ui
         void syncAquariumEmbeddedViewportWindow();
         void renderAquariumButton(D2DRenderContext& ctx, UiRect rect, const std::wstring& label, bool active = false);
         void renderAquariumMiniButton(D2DRenderContext& ctx, UiRect rect, const std::wstring& label, bool active = false);
-        void renderAquariumResizeHandle(D2DRenderContext& ctx, UiRect rect, bool leftPanelHandle);
         bool isAquariumButtonHovered(UiRect rect) const;
         int aquariumHotIdAt(float x, float y) const;
         UiRect aquariumHotRectById(int hotId) const;
@@ -554,6 +554,7 @@ namespace am::ui
             RightLogs
         };
         AquariumPanelResizeTarget aquariumPanelResizeTarget_ = AquariumPanelResizeTarget::None;
+        PanelResizeEdge aquariumPanelResizeEdges_ = PanelResizeEdge::None;
         float aquariumPanelResizeStartX_ = 0.0f;
         float aquariumPanelResizeStartY_ = 0.0f;
         ace::aquarium_ui::AceEnvironment3DPanelState aquariumPanelResizeStartState_{};

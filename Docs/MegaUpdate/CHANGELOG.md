@@ -58,3 +58,11 @@
 - Added explicit focus and pointer-capture ownership with cleanup on release, disable, unregister and window deactivation.
 - Added modal barriers and context-aware command fallback after focused widgets decline an event.
 - Added warning-as-error lifecycle tests and verified MSBuild Debug/Release plus CMake Debug.
+
+## 2026-07-02 — M1.4c global edge resize
+
+- Removed the visible Aquarium corner resize widgets and reclaimed their content space.
+- Added reusable invisible left/right/top/bottom/corner hit testing with contextual cursors.
+- Removed fixed 500 px width and 920 px height caps; physical layout bounds are now the maximum.
+- Added recoverable minimums and persisted final dimensions without writing during mouse movement.
+- Added behavioral, persistence and shell-integration gates across all build configurations.
