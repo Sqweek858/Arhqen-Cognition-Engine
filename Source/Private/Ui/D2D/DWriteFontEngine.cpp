@@ -1,11 +1,21 @@
 #include "ArhqenCognitionEngine/Ui/D2D/DWriteFontEngine.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <sstream>
 
 namespace am::ui
 {
     bool DWriteFontEngine::initialize(IDWriteFactory* factory, std::string* error)
     {
+        initialized_ = false;
+        factory_.Reset();
+        for (auto& formatEntry : formats_)
+        {
+            formatEntry.Reset();
+        }
+
         if (!factory)
         {
             if (error)
@@ -17,12 +27,25 @@ namespace am::ui
 
         factory_ = factory;
         initialized_ = createDefaultFormats(error);
+        if (initialized_)
+        {
+            ++generation_;
+        }
+        else
+        {
+            factory_.Reset();
+        }
         return initialized_;
     }
 
     bool DWriteFontEngine::initialized() const
     {
         return initialized_;
+    }
+
+    std::uint64_t DWriteFontEngine::generation() const
+    {
+        return generation_;
     }
 
     IDWriteTextFormat* DWriteFontEngine::format(FontRole role) const
@@ -40,7 +63,7 @@ namespace am::ui
     {
         TextLayoutResult result;
 
-        if (!initialized_ || !factory_)
+        if (!initialized_ || !factory_ || text.size() > static_cast<std::size_t>(std::numeric_limits<UINT32>::max()))
         {
             return result;
         }
@@ -51,13 +74,15 @@ namespace am::ui
             return result;
         }
 
+        const float layoutWidth = std::isfinite(options.width) ? std::max(1.0f, options.width) : 1.0f;
+        const float layoutHeight = std::isfinite(options.height) ? std::max(1.0f, options.height) : 1.0f;
         Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
         const HRESULT hr = factory_->CreateTextLayout(
             text.c_str(),
             static_cast<UINT32>(text.size()),
             selectedFormat,
-            options.width,
-            options.height,
+            layoutWidth,
+            layoutHeight,
             &layout
         );
 
@@ -66,19 +91,30 @@ namespace am::ui
             return result;
         }
 
-        layout->SetTextAlignment(options.horizontal);
-        layout->SetParagraphAlignment(options.vertical);
-        layout->SetWordWrapping(options.wrapping);
+        if (FAILED(layout->SetTextAlignment(options.horizontal)) ||
+            FAILED(layout->SetParagraphAlignment(options.vertical)) ||
+            FAILED(layout->SetWordWrapping(options.wrapping)))
+        {
+            return result;
+        }
 
         if (options.trimEnd)
         {
             DWRITE_TRIMMING trimming{};
             trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
-            layout->SetTrimming(&trimming, nullptr);
+            Microsoft::WRL::ComPtr<IDWriteInlineObject> ellipsisSign;
+            if (FAILED(factory_->CreateEllipsisTrimmingSign(selectedFormat, &ellipsisSign)) ||
+                FAILED(layout->SetTrimming(&trimming, ellipsisSign.Get())))
+            {
+                return result;
+            }
         }
 
         DWRITE_TEXT_METRICS metrics{};
-        layout->GetMetrics(&metrics);
+        if (FAILED(layout->GetMetrics(&metrics)))
+        {
+            return result;
+        }
 
         result.layout = layout;
         result.metrics = metrics;
@@ -185,7 +221,7 @@ namespace am::ui
         TextLayoutOptions localOptions = options;
         localOptions.width = rect.width();
         localOptions.height = rect.height();
-        drawText(target, text, localOptions, D2D1::Point2F(rect.left, rect.top), brush);
+        drawText(target, text, localOptions, D2D1::Point2F(std::round(rect.left), std::round(rect.top)), brush);
     }
 
     std::wstring DWriteFontEngine::roleName(FontRole role) const

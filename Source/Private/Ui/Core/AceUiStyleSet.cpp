@@ -24,16 +24,19 @@ namespace am::ui
     void AceUiStyleSet::RegisterColor(std::wstring key, UiColor color)
     {
         colors_[std::move(key)] = color;
+        ++generation_;
     }
 
     void AceUiStyleSet::RegisterPanel(AceUiPanelStyle style)
     {
         panels_[style.name] = std::move(style);
+        ++generation_;
     }
 
     void AceUiStyleSet::RegisterText(AceUiTextStyle style)
     {
         texts_[style.name] = std::move(style);
+        ++generation_;
     }
 
     UiColor AceUiStyleSet::Color(const std::wstring& key, UiColor fallback) const
@@ -81,5 +84,10 @@ namespace am::ui
         stats.lookupCount = lookupCount_;
         stats.missCount = missCount_;
         return stats;
+    }
+
+    std::uint64_t AceUiStyleSet::Generation() const
+    {
+        return generation_;
     }
 }

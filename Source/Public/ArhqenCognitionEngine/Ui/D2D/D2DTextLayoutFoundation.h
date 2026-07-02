@@ -31,6 +31,7 @@ namespace am::ui
 
         static DWRITE_TEXT_METRICS Measure(D2DRenderContext& ctx, const std::wstring& text, FontRole role, UiRect rect, DWRITE_WORD_WRAPPING wrapping = DWRITE_WORD_WRAPPING_NO_WRAP);
         static std::wstring EllipsizeToFit(D2DRenderContext& ctx, const std::wstring& text, FontRole role, float width);
+        static float SnapTextCoordinate(float value);
         static void Draw(D2DRenderContext& ctx, const std::wstring& text, FontRole role, UiRect rect, ID2D1Brush* brush, D2DTextOverflowMode overflow = D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT valign = DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
         static void PushClip(D2DRenderContext& ctx, UiRect rect);
         static void PopClip(D2DRenderContext& ctx);

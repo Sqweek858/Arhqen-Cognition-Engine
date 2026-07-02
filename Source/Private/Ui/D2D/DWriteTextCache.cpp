@@ -1,7 +1,9 @@
 #include "ArhqenCognitionEngine/Ui/D2D/DWriteTextCache.h"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 
 namespace am::ui
 {
@@ -14,7 +16,17 @@ namespace am::ui
 
         int quantize(float value)
         {
-            return static_cast<int>(std::round(value * 2.0f));
+            if (!std::isfinite(value))
+            {
+                return 0;
+            }
+            constexpr float kLimit = static_cast<float>(std::numeric_limits<int>::max() / 4);
+            return static_cast<int>(std::round(std::clamp(value, -kLimit, kLimit) * 2.0f));
+        }
+
+        float normalizedDimension(float value)
+        {
+            return std::isfinite(value) ? std::max(1.0f, value) : 1.0f;
         }
     }
 
@@ -26,7 +38,9 @@ namespace am::ui
             quantize(height) == quantize(other.height) &&
             horizontal == other.horizontal &&
             vertical == other.vertical &&
-            wrapping == other.wrapping;
+            wrapping == other.wrapping &&
+            trimEnd == other.trimEnd &&
+            fontGeneration == other.fontGeneration;
     }
 
     std::size_t TextCacheKeyHasher::operator()(const TextCacheKey& key) const
@@ -38,6 +52,8 @@ namespace am::ui
         seed = combineHash(seed, std::hash<int>{}(static_cast<int>(key.horizontal)));
         seed = combineHash(seed, std::hash<int>{}(static_cast<int>(key.vertical)));
         seed = combineHash(seed, std::hash<int>{}(static_cast<int>(key.wrapping)));
+        seed = combineHash(seed, std::hash<bool>{}(key.trimEnd));
+        seed = combineHash(seed, std::hash<std::uint64_t>{}(key.fontGeneration));
         return seed;
     }
 
@@ -72,7 +88,7 @@ namespace am::ui
 
     TextLayoutResult DWriteTextCache::getOrCreate(const DWriteFontEngine& engine, const std::wstring& text, const TextLayoutOptions& options)
     {
-        const auto key = makeKey(text, options);
+        const auto key = makeKey(engine, text, options);
         auto found = lookup_.find(key);
 
         if (found != lookup_.end())
@@ -84,6 +100,10 @@ namespace am::ui
 
         ++misses_;
         TextLayoutResult created = engine.createLayout(text, options);
+        if (!created.valid || !created.layout)
+        {
+            return created;
+        }
 
         Entry entry;
         entry.key = key;
@@ -106,16 +126,18 @@ namespace am::ui
         return misses_;
     }
 
-    TextCacheKey DWriteTextCache::makeKey(const std::wstring& text, const TextLayoutOptions& options) const
+    TextCacheKey DWriteTextCache::makeKey(const DWriteFontEngine& engine, const std::wstring& text, const TextLayoutOptions& options) const
     {
         TextCacheKey key;
         key.text = text;
         key.role = options.role;
-        key.width = options.width;
-        key.height = options.height;
+        key.width = normalizedDimension(options.width);
+        key.height = normalizedDimension(options.height);
         key.horizontal = options.horizontal;
         key.vertical = options.vertical;
         key.wrapping = options.wrapping;
+        key.trimEnd = options.trimEnd;
+        key.fontGeneration = engine.generation();
         return key;
     }
 

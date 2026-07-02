@@ -5,6 +5,7 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -75,6 +76,7 @@ namespace am::ui
 
         bool initialize(IDWriteFactory* factory, std::string* error);
         bool initialized() const;
+        std::uint64_t generation() const;
 
         IDWriteTextFormat* format(FontRole role) const;
         TextLayoutResult createLayout(const std::wstring& text, const TextLayoutOptions& options) const;
@@ -110,5 +112,6 @@ namespace am::ui
         Microsoft::WRL::ComPtr<IDWriteFactory> factory_;
         std::array<Microsoft::WRL::ComPtr<IDWriteTextFormat>, static_cast<std::size_t>(FontRole::Count)> formats_{};
         bool initialized_ = false;
+        std::uint64_t generation_ = 0;
     };
 }

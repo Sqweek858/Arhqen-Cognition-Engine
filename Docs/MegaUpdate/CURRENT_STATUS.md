@@ -4,77 +4,56 @@
 
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
-- Macro milestone: M1 — core foundations
-- Mini-milestone: M1.4c — reusable edge resize and persisted panel dimensions (complete; ready to commit)
-- Latest known-good commit: `ef52b83` (`M1.4b: add centralized input routing`)
+- Macro milestone: M1 - core foundations
+- Mini-milestone: M1.4d - DirectWrite text/style/layout quality gates (complete; ready to commit)
+- Latest known-good commit: `a9bb308` (`M1.4c: replace resize handles with persistent panel edges`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
 
-- User brainstorm consolidated into `FEATURE_SPECIFICATION.md`.
-- Master execution rules and initial milestone map written.
-- Audited Git branch, remote, local modifications, generated artifacts and suspicious secret filenames.
-- Created `feature/ace-editor-mega-update` without discarding the existing working tree.
-- Confirmed no generated build products or suspicious credential filenames are tracked.
-- Debug and Release solution builds pass with Visual Studio 2022 v143.
-- Core Aquarium M0-M15 integration probe passes.
-- Current D2D text-selection, UI foundation, telemetry, RHI7/RHI8 static and VTBRIDGE4R2 probes pass.
-- Added a centralized SI-first unit model with metric/imperial conversion, strict parsing, readable formatting and best-fit display units.
-- Added affine temperature conversion, percentages-as-ratios, binary data units and physics/rendering dimensions.
-- Integrated the unit implementation into MSBuild and CMake and added a warning-clean standalone probe.
-- Fixed a pre-existing CMake/MSBuild mismatch by making CMake use the same Unicode Win32 contract and configuration defines as the Visual Studio project.
-- Added RFC 4122 version-4 stable GUID values with strict canonical parsing and hashing.
-- Added the `/Game` virtual mount mapped to `Content/`, with traversal protection, Windows filename checks, UTF-8 validation, NFC normalization and case-insensitive Unicode comparison keys.
-- Added a fixed little-endian ACE binary container with schema GUID, independent object version, payload bounds and checksum validation.
-- Added typed primitive/string/GUID archive IO with sticky explicit errors.
-- Added same-directory atomic file replacement with write-through flush, bounded reads and temporary-file cleanup.
-- Added central grouped transactions, reverse-order undo, forward-order redo, cancel/revert, scoped RAII and bounded history.
-- Added a centralized editor command registry with metadata, dynamic state, contextual shortcuts, rebinding, search and conflict detection.
-- Added centralized z-ordered input routing with focus, pointer capture, modal barriers, lifecycle repair and command fallback.
-- Removed visible Aquarium corner resize handles and replaced them with reusable invisible side/bottom/corner hit zones and correct cursors.
-- Removed the artificial 500x920 panel cap; sizes now stop only at layout bounds and recoverable minimums, then persist in the layout profile.
+- Consolidated the user brainstorm into `FEATURE_SPECIFICATION.md` and created persistent execution/recovery/test documentation.
+- Audited the repository, preserved the inherited working tree and created `feature/ace-editor-mega-update`.
+- Verified that generated build products and suspicious credential filenames are not tracked.
+- Added canonical SI-first units, RFC 4122 stable GUIDs and a sandboxed `/Game` virtual mount mapped to `Content/`.
+- Added a versioned little-endian ACE archive, checksums, bounded reads and durable atomic replacement.
+- Added central grouped transactions with deterministic undo/redo, cancellation and bounded history.
+- Added a contextual command registry and centralized z-ordered input routing with focus, capture and modal barriers.
+- Replaced visible Aquarium resize handles with reusable invisible edge/corner zones and persistent dimensions.
+- Removed artificial 500x920 panel caps; only physical layout bounds and recoverable minimums remain.
+- Fixed DirectWrite cache identity so ellipsis state and font generations cannot reuse incompatible layouts.
+- Replaced draw-time UTF-16 slicing with native DirectWrite character trimming and a real ellipsis inline object.
+- Added defensive dimension normalization, failed-layout cache rejection and pixel-snapped text origins.
+- Added monotonic style/font generations for deterministic live resource invalidation.
 
 ## Next action
 
-Commit and push M1.4c, then complete M1.4d text/style/layout quality gates before beginning the M2 editor shell.
+Commit and push M1.4d, then begin M2 with the Engine-mode editor shell and reusable dock/split/tab layout model.
 
 ## Existing baseline findings
 
 - The active single-HWND composite path is intentional and conflicts with the older `validate_ace_aq3d11.ps1` assertion that demands the legacy child-HWND path by default.
 - `validate_ace_perf3.ps1` expects an older exact timing-reset marker; current code records real timing through newer paths.
-- `validate_ace_clean0.ps1` detects one legacy demo string containing `ACE shell backend placeholder`; remove or replace it in a dedicated cleanup mini-milestone rather than rewriting the preserved baseline.
+- `validate_ace_clean0.ps1` detects one legacy demo string containing `ACE shell backend placeholder`; remove it in a dedicated cleanup mini-milestone.
 - Compiler-dependent validation scripts require the Visual Studio developer environment; this is an invocation concern, not a source failure.
-- User telemetry shows raw renderer throughput well above the presentation rate, while editor/UI cadence remains the main performance target.
+- User telemetry shows raw renderer throughput well above presentation rate; editor/UI cadence remains the main performance target.
 
 ## Known constraints
 
-- Preserve all relevant current local work.
-- No placeholders.
-- Push each verified mini-milestone to the existing remote.
-- No PR unless requested.
+- Preserve all relevant local work.
+- No placeholders or exposed incomplete subsystems.
+- Push each verified mini-milestone to the existing remote; no PR unless requested.
 - No destructive Git recovery.
 
 ## Tests run
 
-- `MSBuild Debug|x64`: PASS.
-- `MSBuild Release|x64`: PASS.
-- `validate_ace_aqcpp4.ps1` under VS developer environment: PASS.
-- `validate_ace_aqui1.ps1`: PASS.
-- `validate_ace_ui5_ui11_aqui1.ps1`: PASS.
-- `validate_ace_perf2r3.ps1`: PASS.
-- `validate_ace_rhi7_rhi8.ps1`: PASS (static path; full solution build separately passed).
-- `validate_ace_vtbridge4r2.ps1` under VS developer environment: PASS.
-- `validate_ace_units.ps1` under VS developer environment: PASS (31 focused checks, `/W4 /WX`).
-- CMake Debug full build: PASS after aligning Unicode/configuration defines with MSBuild.
-- `validate_ace_identity_asset_path.ps1`: PASS (33 focused checks, `/W4 /WX`).
-- `validate_ace_archive.ps1`: PASS (27 focused checks, `/W4 /WX`).
-- M1.2b MSBuild Debug/Release and CMake Debug: PASS.
-- `validate_ace_transactions.ps1`: PASS (21 focused checks, `/W4 /WX`).
-- M1.3 MSBuild Debug/Release and CMake Debug: PASS.
-- `validate_ace_commands.ps1`: PASS (18 focused checks, `/W4 /WX`).
-- M1.4a MSBuild Debug/Release and CMake Debug: PASS.
-- `validate_ace_input_router.ps1`: PASS (13 focused checks, `/W4 /WX`).
-- M1.4b MSBuild Debug/Release and CMake Debug: PASS.
-- `validate_ace_panel_resize.ps1`: PASS (13 behavioral/persistence checks plus shell integration assertion, `/W4 /WX`).
-- M1.4c MSBuild Debug/Release and CMake Debug: PASS.
-- Known stale failures are recorded above and are not hidden.
+- M0 baseline solution Debug/Release, core Aquarium, UI, telemetry, RHI and bridge probes: PASS; stale validators are documented above.
+- `validate_ace_units.ps1`: PASS (31 focused `/W4 /WX` checks); MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_identity_asset_path.ps1`: PASS (33 focused `/W4 /WX` checks); all builds PASS.
+- `validate_ace_archive.ps1`: PASS (27 focused `/W4 /WX` checks); all builds PASS.
+- `validate_ace_transactions.ps1`: PASS (21 focused `/W4 /WX` checks); all builds PASS.
+- `validate_ace_commands.ps1`: PASS (18 focused `/W4 /WX` checks); all builds PASS.
+- `validate_ace_input_router.ps1`: PASS (13 focused `/W4 /WX` checks); all builds PASS.
+- `validate_ace_panel_resize.ps1`: PASS (13 behavioral/persistence checks plus shell assertion, `/W4 /WX`); all builds PASS.
+- `validate_ace_text_foundation.ps1`: PASS (17 live DirectWrite/cache/style checks plus draw-path assertions, `/W4 /WX`).
+- `validate_ace_ui5_ui11_aqui1.ps1`, `validate_ace_perf2r3.ps1` and `validate_ace_panel_resize.ps1`: PASS after M1.4d.
+- M1.4d MSBuild Debug/Release and CMake Debug: PASS.

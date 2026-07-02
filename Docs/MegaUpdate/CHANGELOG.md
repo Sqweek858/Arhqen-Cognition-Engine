@@ -66,3 +66,12 @@
 - Removed fixed 500 px width and 920 px height caps; physical layout bounds are now the maximum.
 - Added recoverable minimums and persisted final dimensions without writing during mouse movement.
 - Added behavioral, persistence and shell-integration gates across all build configurations.
+
+## 2026-07-02 - M1.4d text/style/layout quality
+
+- Corrected the DirectWrite cache key to include trimming behavior and font-resource generation.
+- Added real DirectWrite ellipsis trimming instead of slicing the displayed UTF-16 string in the draw path.
+- Prevented invalid layouts from polluting the LRU and normalized non-finite or invalid layout dimensions safely.
+- Added pixel-snapped text origins and surrogate-safe behavior for the legacy string-returning ellipsis helper.
+- Added monotonic font/style generations for future live theme and resource invalidation.
+- Added a warning-as-error probe for real DirectWrite layouts, Romanian/Unicode text, native trimming, caret hit testing, cache invalidation and bounded eviction.

@@ -3,10 +3,45 @@
 #include "ArhqenCognitionEngine/Ui/D2D/D2DWidgetUtils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
+#include <vector>
 
 namespace am::ui
 {
+    namespace
+    {
+        bool isHighSurrogate(wchar_t value)
+        {
+            return value >= static_cast<wchar_t>(0xD800) && value <= static_cast<wchar_t>(0xDBFF);
+        }
+
+        bool isLowSurrogate(wchar_t value)
+        {
+            return value >= static_cast<wchar_t>(0xDC00) && value <= static_cast<wchar_t>(0xDFFF);
+        }
+
+        std::vector<std::size_t> utf16PrefixBoundaries(const std::wstring& text)
+        {
+            std::vector<std::size_t> boundaries;
+            boundaries.reserve(text.size() + 1);
+            boundaries.push_back(0);
+            for (std::size_t index = 0; index < text.size();)
+            {
+                if (isHighSurrogate(text[index]) && index + 1 < text.size() && isLowSurrogate(text[index + 1]))
+                {
+                    index += 2;
+                }
+                else
+                {
+                    ++index;
+                }
+                boundaries.push_back(index);
+            }
+            return boundaries;
+        }
+    }
+
     D2DTextLayoutStats D2DTextLayoutFoundation::stats_{};
 
     void D2DTextLayoutFoundation::ResetStats()
@@ -17,6 +52,11 @@ namespace am::ui
     D2DTextLayoutStats D2DTextLayoutFoundation::Stats()
     {
         return stats_;
+    }
+
+    float D2DTextLayoutFoundation::SnapTextCoordinate(float value)
+    {
+        return std::isfinite(value) ? std::round(value) : 0.0f;
     }
 
     DWRITE_TEXT_METRICS D2DTextLayoutFoundation::Measure(D2DRenderContext& ctx, const std::wstring& text, FontRole role, UiRect rect, DWRITE_WORD_WRAPPING wrapping)
@@ -65,13 +105,14 @@ namespace am::ui
             return std::wstring(1, kEllipsis);
         }
 
+        const auto boundaries = utf16PrefixBoundaries(text);
         std::size_t lo = 0;
-        std::size_t hi = text.size();
+        std::size_t hi = boundaries.size() - 1;
         std::wstring best(1, kEllipsis);
         while (lo < hi)
         {
             const std::size_t mid = (lo + hi + 1) / 2;
-            std::wstring candidate = text.substr(0, mid);
+            std::wstring candidate = text.substr(0, boundaries[mid]);
             candidate.push_back(kEllipsis);
             const auto m = Measure(ctx, candidate, role, measureRect, DWRITE_WORD_WRAPPING_NO_WRAP);
             if (m.widthIncludingTrailingWhitespace <= width + 0.5f)
@@ -97,15 +138,11 @@ namespace am::ui
         ++stats_.drawCount;
         PushClip(ctx, rect);
 
-        std::wstring toDraw = text;
+        const std::wstring& toDraw = text;
         DWRITE_WORD_WRAPPING wrapping = DWRITE_WORD_WRAPPING_NO_WRAP;
         if (overflow == D2DTextOverflowMode::Wrap)
         {
             wrapping = DWRITE_WORD_WRAPPING_WRAP;
-        }
-        else if (overflow == D2DTextOverflowMode::Ellipsis)
-        {
-            toDraw = EllipsizeToFit(ctx, text, role, rect.width());
         }
 
         if (ctx.fontEngine)
@@ -123,7 +160,11 @@ namespace am::ui
                 const auto layout = ctx.textCache->getOrCreate(*ctx.fontEngine, toDraw, options);
                 if (layout.valid && layout.layout)
                 {
-                    ctx.target->DrawTextLayout(D2D1::Point2F(rect.left, rect.top), layout.layout.Get(), brush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+                    ctx.target->DrawTextLayout(
+                        D2D1::Point2F(SnapTextCoordinate(rect.left), SnapTextCoordinate(rect.top)),
+                        layout.layout.Get(),
+                        brush,
+                        D2D1_DRAW_TEXT_OPTIONS_CLIP);
                     PopClip(ctx);
                     return;
                 }

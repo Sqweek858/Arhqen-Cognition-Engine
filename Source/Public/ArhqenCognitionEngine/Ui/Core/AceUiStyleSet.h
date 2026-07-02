@@ -2,6 +2,7 @@
 
 #include "ArhqenCognitionEngine/Ui/Core/UiStyleTokens.h"
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 
@@ -47,10 +48,12 @@ namespace am::ui
         AceUiPanelStyle Panel(const std::wstring& key) const;
         AceUiTextStyle Text(const std::wstring& key) const;
         AceUiStyleStats Stats() const;
+        std::uint64_t Generation() const;
 
     private:
         mutable std::uint64_t lookupCount_ = 0;
         mutable std::uint64_t missCount_ = 0;
+        std::uint64_t generation_ = 0;
         std::unordered_map<std::wstring, UiColor> colors_;
         std::unordered_map<std::wstring, AceUiPanelStyle> panels_;
         std::unordered_map<std::wstring, AceUiTextStyle> texts_;

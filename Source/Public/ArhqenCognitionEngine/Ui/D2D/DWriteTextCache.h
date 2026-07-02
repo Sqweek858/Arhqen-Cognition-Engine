@@ -2,6 +2,7 @@
 
 #include "ArhqenCognitionEngine/Ui/D2D/DWriteFontEngine.h"
 
+#include <cstdint>
 #include <list>
 #include <unordered_map>
 
@@ -16,6 +17,8 @@ namespace am::ui
         DWRITE_TEXT_ALIGNMENT horizontal = DWRITE_TEXT_ALIGNMENT_LEADING;
         DWRITE_PARAGRAPH_ALIGNMENT vertical = DWRITE_PARAGRAPH_ALIGNMENT_NEAR;
         DWRITE_WORD_WRAPPING wrapping = DWRITE_WORD_WRAPPING_WRAP;
+        bool trimEnd = false;
+        std::uint64_t fontGeneration = 0;
 
         bool operator==(const TextCacheKey& other) const;
     };
@@ -46,7 +49,7 @@ namespace am::ui
             TextLayoutResult layout;
         };
 
-        TextCacheKey makeKey(const std::wstring& text, const TextLayoutOptions& options) const;
+        TextCacheKey makeKey(const DWriteFontEngine& engine, const std::wstring& text, const TextLayoutOptions& options) const;
         void touch(std::list<Entry>::iterator it);
         void evictIfNeeded();
 
