@@ -21,3 +21,11 @@
 - Added strict unit-aware parsing, stable validation errors, best-fit display selection and deterministic formatting.
 - Added standalone warning-as-error tests and both MSBuild/CMake source registration.
 - Aligned CMake Win32 Unicode/configuration defines with the canonical Visual Studio build after the cross-build gate exposed ANSI macro expansion failures.
+
+## 2026-07-02 — M1.2a stable identity and virtual asset paths
+
+- Added persistent RFC 4122 version-4 GUID values with canonical lowercase text round-tripping and stable hashing.
+- Added strict `/Game` virtual paths rooted in `Content/`; engine source and arbitrary filesystem paths cannot enter the asset namespace.
+- Added traversal, invalid-character, reserved-name, length and malformed UTF-8 rejection.
+- Added NFC normalization and Unicode-aware case keys to prevent visually duplicate assets on Windows.
+- Added warning-as-error identity/path probes and both build-system registrations.

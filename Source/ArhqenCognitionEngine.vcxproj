@@ -60,12 +60,14 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Aquarium\AceAqWorldEvents.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Aquarium\AceAqWorldModel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\AceUiModel.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetPath.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\AppConfig.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Application.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\ExitCode.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Logger.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\PathUtils.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Result.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Identity\AceGuid.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\RuntimeClock.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\TaskQueue.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Units\AceUnits.h" />
@@ -203,8 +205,10 @@
     <ClCompile Include="Private\AquariumRender\AceAquariumCamera.cpp" />
     <ClCompile Include="Private\AquariumRender\AceAquariumEmbeddedDx12Viewport.cpp" />
     <ClCompile Include="Private\Core\AppConfig.cpp" />
+    <ClCompile Include="Private\Core\Assets\AceAssetPath.cpp" />
     <ClCompile Include="Private\Core\Application.cpp" />
     <ClCompile Include="Private\Core\Logger.cpp" />
+    <ClCompile Include="Private\Core\Identity\AceGuid.cpp" />
     <ClCompile Include="Private\Core\PathUtils.cpp" />
     <ClCompile Include="Private\Core\RuntimeClock.cpp" />
     <ClCompile Include="Private\Core\TaskQueue.cpp" />

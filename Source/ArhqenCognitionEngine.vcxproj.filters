@@ -45,12 +45,14 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Aquarium\AceAqWorldEvents.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Aquarium\AceAqWorldModel.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\AceUiModel.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetPath.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\AppConfig.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Application.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\ExitCode.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Logger.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\PathUtils.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Result.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Identity\AceGuid.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\RuntimeClock.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\TaskQueue.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Units\AceUnits.h"><Filter></Filter></ClInclude>
@@ -188,8 +190,10 @@
     <ClCompile Include="Private\AquariumRender\AceAquariumCamera.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\AquariumRender\AceAquariumEmbeddedDx12Viewport.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\AppConfig.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Core\Assets\AceAssetPath.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Application.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Logger.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Core\Identity\AceGuid.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\PathUtils.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\RuntimeClock.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\TaskQueue.cpp"><Filter></Filter></ClCompile>

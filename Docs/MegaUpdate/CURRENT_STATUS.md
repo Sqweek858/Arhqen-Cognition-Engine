@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M1 — core foundations
-- Mini-milestone: M1.1 — canonical units and editor parsing/formatting (complete; ready to commit)
-- Latest known-good commit: `deab48b` (`M0: establish ACE editor mega-update baseline`)
+- Mini-milestone: M1.2a — stable GUIDs and sandboxed asset paths (complete; ready to commit)
+- Latest known-good commit: `86b1005` (`M1.1: add canonical SI unit system`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -23,10 +23,12 @@
 - Added affine temperature conversion, percentages-as-ratios, binary data units and physics/rendering dimensions.
 - Integrated the unit implementation into MSBuild and CMake and added a warning-clean standalone probe.
 - Fixed a pre-existing CMake/MSBuild mismatch by making CMake use the same Unicode Win32 contract and configuration defines as the Visual Studio project.
+- Added RFC 4122 version-4 stable GUID values with strict canonical parsing and hashing.
+- Added the `/Game` virtual mount mapped to `Content/`, with traversal protection, Windows filename checks, UTF-8 validation, NFC normalization and case-insensitive Unicode comparison keys.
 
 ## Next action
 
-Commit and push M1.1. Then begin M1.2 stable IDs, virtual asset paths and versioned serialization primitives.
+Commit and push M1.2a, then implement the M1.2b versioned archive and atomic-save primitives.
 
 ## Existing baseline findings
 
@@ -56,4 +58,5 @@ Commit and push M1.1. Then begin M1.2 stable IDs, virtual asset paths and versio
 - `validate_ace_vtbridge4r2.ps1` under VS developer environment: PASS.
 - `validate_ace_units.ps1` under VS developer environment: PASS (31 focused checks, `/W4 /WX`).
 - CMake Debug full build: PASS after aligning Unicode/configuration defines with MSBuild.
+- `validate_ace_identity_asset_path.ps1`: PASS (33 focused checks, `/W4 /WX`).
 - Known stale failures are recorded above and are not hidden.
