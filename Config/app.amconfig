@@ -2,10 +2,13 @@
 app.name=Arhqen Cognition Engine
 app.version=ace-clean0
 log.path=Build/Logs/ace.log
+engine_log.path=Build/Logs/ace_engine.log
 
 # Runtime loop settings.
 # 0 = keep open until the user closes the window.
 runtime.max_frames=0
+runtime.sleep_ms=0
+runtime.idle_wait_ms=8
 
 # Direct2D/DirectWrite shell UI.
 window.title=Arhqen Cognition Engine
@@ -14,6 +17,7 @@ window.height=860
 
 renderer.enabled=0
 ui.backend=direct2d_directwrite_ace_shell
+ui.vsync=0
 
 # legacy AI memory removed in ACE-CLEAN0
 ui.layout.path=Build/Ui/ace_clean0.layout

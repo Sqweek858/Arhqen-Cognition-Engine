@@ -1,6 +1,7 @@
 #include "ArhqenCognitionEngine/Core/Application.h"
 
 #include "ArhqenCognitionEngine/Core/PathUtils.h"
+#include "ArhqenCognitionEngine/Ui/AceEngineConsole.h"
 
 #include <Windows.h>
 
@@ -95,7 +96,12 @@ namespace am::core
             return false;
         }
 
+        am::ui::AceEngineSetLogPath(
+            (repoRoot_ / config_.getString("engine_log.path", "Build/Logs/ace_engine.log")).lexically_normal());
+
         maxFrames_ = std::max(0, config_.getInt("runtime.max_frames", 0));
+        runtimeSleepMilliseconds_ = std::max(0, config_.getInt("runtime.sleep_ms", 0));
+        runtimeIdleWaitMilliseconds_ = std::max(0, config_.getInt("runtime.idle_wait_ms", 8));
         rendererEnabled_ = config_.getInt("renderer.enabled", 0) != 0;
 
         const auto logPath = (repoRoot_ / config_.getString("log.path", "Build/Logs/ace.log")).lexically_normal();
@@ -182,6 +188,7 @@ namespace am::core
 
         const auto layoutProfilePath = (repoRoot_ / config_.getString("ui.layout.path", "Build/Ui/ace_clean0.layout")).lexically_normal();
         shellUi_.setLayoutProfilePath(layoutProfilePath);
+        shellUi_.setVsyncEnabled(config_.getInt("ui.vsync", 0) != 0);
 
         if (!shellUi_.create(window_.hwnd(), window_.width(), window_.height(), &error))
         {
@@ -202,6 +209,8 @@ namespace am::core
 
     bool Application::updateRuntime(const FrameTiming& timing)
     {
+        shellUi_.setRuntimeFrameDeltaSeconds(timing.deltaSeconds);
+
         if (timing.frameIndex < 3 || timing.frameIndex % 300 == 0)
         {
             logger_.info(
@@ -223,6 +232,7 @@ namespace am::core
         }
 
         shellUi_.tick(static_cast<float>(timing.deltaSeconds));
+        shellUi_.flushPendingPaint();
 
         if (rendererEnabled_)
         {
@@ -246,7 +256,19 @@ namespace am::core
             }
         }
 
-        Sleep(16);
+        if (runtimeSleepMilliseconds_ > 0)
+        {
+            Sleep(static_cast<DWORD>(runtimeSleepMilliseconds_));
+        }
+        else if (runtimeIdleWaitMilliseconds_ > 0 && !shellUi_.wantsUnthrottledTick())
+        {
+            MsgWaitForMultipleObjectsEx(
+                0,
+                nullptr,
+                static_cast<DWORD>(runtimeIdleWaitMilliseconds_),
+                QS_ALLINPUT,
+                MWMO_INPUTAVAILABLE);
+        }
         return true;
     }
 

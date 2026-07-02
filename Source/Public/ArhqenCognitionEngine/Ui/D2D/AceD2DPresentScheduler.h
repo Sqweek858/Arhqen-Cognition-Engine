@@ -13,7 +13,7 @@ namespace am::ui
     {
         FullFrameFlipSequential,
         FullFrameFlipDiscard,
-        DirtyRectPresent1Reserved,
+        DirtyRectPresent1,
         LegacyRetainedContentsForbidden
     };
 

@@ -25,11 +25,11 @@ namespace am::ui
 
     AceD2DFramePlan AceD2DFlipFrameCompositor::BeginFrame(const AceD2DFrameInput& input)
     {
-        currentInput_ = input;
         frameStart_ = std::chrono::steady_clock::now();
         ++stats_.frameNumber;
         ++stats_.beginFrameCount;
         currentPlan_ = BuildPlan(input);
+        currentInput_ = input;
         currentPlan_.reason = BuildReason(input, currentPlan_);
         if (currentPlan_.fullFrameRedraw)
         {
@@ -154,14 +154,32 @@ namespace am::ui
     AceD2DFramePlan AceD2DFlipFrameCompositor::BuildPlan(const AceD2DFrameInput& input) const
     {
         AceD2DFramePlan plan{};
-        plan.presentMode = input.hasDxgiSwapChain ? AceD2DPresentMode::FullFrameFlip : AceD2DPresentMode::Disabled;
-        plan.paintRect = makeUiRect(0.0f, 0.0f, static_cast<float>(std::max(1u, input.width)), static_cast<float>(std::max(1u, input.height)));
-        plan.fullFrameRedraw = true;
-        plan.disableFastPartialViewportPaint = true;
-        plan.clearTarget = true;
+        const UiRect fullRect = makeUiRect(0.0f, 0.0f, static_cast<float>(std::max(1u, input.width)), static_cast<float>(std::max(1u, input.height)));
+        const bool firstFrame = stats_.beginFrameCount <= 1;
+        const bool structuralTransition =
+            firstFrame ||
+            input.width != currentInput_.width ||
+            input.height != currentInput_.height ||
+            input.overlayVisible != currentInput_.overlayVisible ||
+            input.viewport3DActive != currentInput_.viewport3DActive ||
+            input.viewportResourceEpoch != currentInput_.viewportResourceEpoch;
+        const bool partial =
+            input.hasDxgiSwapChain &&
+            input.retainedPartialRedrawSafe &&
+            !input.liveResize &&
+            !input.dirtyRect.empty() &&
+            !structuralTransition;
+
+        plan.presentMode = !input.hasDxgiSwapChain
+            ? AceD2DPresentMode::Disabled
+            : (partial ? AceD2DPresentMode::DirtyRectPresent1 : AceD2DPresentMode::FullFrameFlip);
+        plan.paintRect = partial ? input.dirtyRect : fullRect;
+        plan.fullFrameRedraw = !partial;
+        plan.disableFastPartialViewportPaint = !partial;
+        plan.clearTarget = !partial;
         plan.useViewportAsNormalElement = true;
-        plan.allowDirtyRects = false;
-        plan.allowRetainedContents = false;
+        plan.allowDirtyRects = partial;
+        plan.allowRetainedContents = partial;
         plan.drawLastGoodViewport = true;
         return plan;
     }
@@ -169,7 +187,7 @@ namespace am::ui
     std::string AceD2DFlipFrameCompositor::BuildReason(const AceD2DFrameInput& input, const AceD2DFramePlan& plan) const
     {
         std::ostringstream oss;
-        oss << "flip_full_frame_no_retained_contents";
+        oss << (plan.fullFrameRedraw ? "flip_full_frame" : "flip_sequential_dirty_rect_retained");
         if (input.viewport3DActive) { oss << ";viewport3d"; }
         if (input.environmentOpen) { oss << ";environment"; }
         if (input.liveResize) { oss << ";live_resize"; }

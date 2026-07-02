@@ -25,6 +25,17 @@ namespace am::renderer::rhi
         U64 wvpConstantsUploaded = 0;
         U64 compositionFrames = 0;
         U64 compositionResizes = 0;
+        U64 compositionPresentSkips = 0;
+        U64 compositionPacingSkips = 0;
+        U64 compositionRenderOnlyFrames = 0;
+        U64 compositionRenderIntervalSamples = 0;
+        U64 compositionPresentIntervalSamples = 0;
+        double compositionRenderIntervalLastMs = 0.0;
+        double compositionRenderIntervalAvgMs = 0.0;
+        double compositionRenderIntervalMaxMs = 0.0;
+        double compositionPresentIntervalLastMs = 0.0;
+        double compositionPresentIntervalAvgMs = 0.0;
+        double compositionPresentIntervalMaxMs = 0.0;
         U64 zeroCopyFrames = 0;
         U64 mappedUploadBytes = 0;
         U64 mappedUploadUpdates = 0;
@@ -53,6 +64,11 @@ namespace am::renderer::rhi
         bool submit(SubmitInfo info, std::string* e) override;
         bool endFrame(std::string* e) override;
         void waitIdle() override;
+        bool destroy(Buffer h, std::string* e=nullptr) override;
+        bool destroy(Texture h, std::string* e=nullptr) override;
+        bool destroy(Sampler h, std::string* e=nullptr) override;
+        bool destroy(Shader h, std::string* e=nullptr) override;
+        bool destroy(Pipeline h, std::string* e=nullptr) override;
 
         Registry& resources() override;
         const Registry& resources() const override;
@@ -70,6 +86,7 @@ namespace am::renderer::rhi
         bool submitAndReadbackBgra8(SubmitInfo info, Texture source, std::vector<U32>* pixels, Extent2D* extent, std::string* e = nullptr);
         bool submitAndPresentBgra8ToComposition(SubmitInfo info, Texture source, void* hwnd, float left, float top, Extent2D extent, std::string* e = nullptr);
         bool presentBgra8ToComposition(Texture source, void* hwnd, float left, float top, Extent2D extent, std::string* e = nullptr);
+        bool setCompositionOverlay(void* content, float left, float top, Extent2D extent, std::string* e = nullptr);
         void resetCompositionHost();
         void noteGpuViewportComposition(U64 overlayVertices = 0);
         void noteD2DTextureBridgeFrame();
@@ -77,6 +94,7 @@ namespace am::renderer::rhi
         void* nativeD3D12Device() const;
         void* nativeD3D12GraphicsQueue() const;
         void* nativeD3D12TextureResource(Texture texture);
+        std::wstring adapterName() const;
 
         Dx12GpuAllocationStats gpuStats() const;
 

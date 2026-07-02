@@ -255,6 +255,7 @@ namespace am::ui::slate
         std::uint32_t outputHeight = 0;
 
         static AceSlateFramePolicy FlipModelFullFrame(std::uint32_t width, std::uint32_t height);
+        static AceSlateFramePolicy FlipModelDirtyRect(std::uint32_t width, std::uint32_t height);
         bool IsFullFrameRequired() const;
         std::string Explain() const;
     };

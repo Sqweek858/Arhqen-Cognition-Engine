@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cstring>
 #include <cstddef>
+#include <deque>
 #include <sstream>
 #include <unordered_map>
 
@@ -96,6 +97,22 @@ namespace am::renderer::rhi
             case Topology::PointList: return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
             }
             return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+        }
+
+        D3D12_COMPARISON_FUNC ToComparison(int compare)
+        {
+            switch (compare)
+            {
+            case 0: return D3D12_COMPARISON_FUNC_NEVER;
+            case 1: return D3D12_COMPARISON_FUNC_LESS;
+            case 2: return D3D12_COMPARISON_FUNC_EQUAL;
+            case 3: return D3D12_COMPARISON_FUNC_LESS_EQUAL;
+            case 4: return D3D12_COMPARISON_FUNC_GREATER;
+            case 5: return D3D12_COMPARISON_FUNC_NOT_EQUAL;
+            case 6: return D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+            case 7: return D3D12_COMPARISON_FUNC_ALWAYS;
+            default: return D3D12_COMPARISON_FUNC_LESS_EQUAL;
+            }
         }
 
         D3D12_RESOURCE_STATES ToState(Access access)
@@ -280,12 +297,14 @@ namespace am::renderer::rhi
         UINT used = 0;
         UINT increment = 0;
         bool shaderVisible = false;
+        std::vector<UINT> freeIndices;
 
         bool initialize(ID3D12Device* device, D3D12_DESCRIPTOR_HEAP_TYPE heapType, UINT count, bool visible, std::string* error)
         {
             type = heapType;
             capacity = count;
             used = 0;
+            freeIndices.clear();
             shaderVisible = visible;
 
             D3D12_DESCRIPTOR_HEAP_DESC desc{};
@@ -306,14 +325,24 @@ namespace am::renderer::rhi
 
         Dx12Descriptor allocate(std::string* error)
         {
-            if (used >= capacity)
+            UINT index = 0;
+            if (!freeIndices.empty())
+            {
+                index = freeIndices.back();
+                freeIndices.pop_back();
+            }
+            else if (used < capacity)
+            {
+                index = used++;
+            }
+            else
             {
                 if (error) { *error = "DX12 descriptor heap exhausted."; }
                 return {};
             }
 
             Dx12Descriptor out{};
-            out.index = used++;
+            out.index = index;
             out.cpu = heap->GetCPUDescriptorHandleForHeapStart();
             out.cpu.ptr += static_cast<SIZE_T>(out.index) * increment;
             if (shaderVisible)
@@ -322,6 +351,14 @@ namespace am::renderer::rhi
                 out.gpu.ptr += static_cast<UINT64>(out.index) * increment;
             }
             return out;
+        }
+
+        void release(UINT index)
+        {
+            if (index < used)
+            {
+                freeIndices.push_back(index);
+            }
         }
     };
 
@@ -354,6 +391,25 @@ namespace am::renderer::rhi
         ComPtr<ID3D12RootSignature> rootSignature;
         ComPtr<ID3D12PipelineState> state;
         D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    };
+
+    struct Dx12DeferredRelease
+    {
+        U64 fenceValue = 0;
+        ComPtr<ID3D12Resource> resource;
+        ComPtr<ID3D12RootSignature> rootSignature;
+        ComPtr<ID3D12PipelineState> pipelineState;
+        bool releaseRtv = false;
+        bool releaseDsv = false;
+        UINT rtvIndex = 0;
+        UINT dsvIndex = 0;
+    };
+
+    struct Dx12CommandSlot
+    {
+        ComPtr<ID3D12CommandAllocator> allocator;
+        ComPtr<ID3D12GraphicsCommandList> commandList;
+        U64 fenceValue = 0;
     };
 
     namespace
@@ -474,7 +530,14 @@ float4 PSMain(VSOut input) : SV_Target0
         std::vector<D3D12_RESOURCE_STATES> backBufferStates;
         ComPtr<IDCompositionDevice> dcompDevice;
         ComPtr<IDCompositionTarget> dcompTarget;
-        ComPtr<IDCompositionVisual> dcompVisual;
+        ComPtr<IDCompositionVisual> dcompRootVisual;
+        ComPtr<IDCompositionVisual> dcompSceneVisual;
+        ComPtr<IDCompositionVisual> dcompOverlayVisual;
+        ComPtr<IUnknown> overlayContent;
+        float overlayLeft = 0.0f;
+        float overlayTop = 0.0f;
+        Extent2D overlayExtent{};
+        HANDLE frameLatencyWaitable = nullptr;
         ComPtr<IDXGISwapChain3> swapChain;
     };
 
@@ -517,16 +580,127 @@ float4 PSMain(VSOut input) : SV_Target0
 
         ComPtr<IDXGIFactory6> factory;
         ComPtr<IDXGIAdapter1> adapter;
+        DXGI_ADAPTER_DESC1 adapterDesc{};
         ComPtr<ID3D12Device> device;
         ComPtr<ID3D12CommandQueue> graphicsQueue;
         ComPtr<ID3D12CommandAllocator> allocator;
         ComPtr<ID3D12GraphicsCommandList> commandList;
+        std::vector<Dx12CommandSlot> commandSlots;
+        Dx12CommandSlot* activeCommandSlot = nullptr;
+        // Keep enough allocator/list pairs for multi-pass graphs without forcing a
+        // mid-frame fence wait. Like UE's command allocator pools, a slot is only
+        // reset after the fence that last consumed it has completed.
+        U32 commandSlotsPerFrame = 16;
+        U32 submissionsThisFrame = 0;
         ComPtr<ID3D12Fence> fence;
         HANDLE fenceEvent = nullptr;
         U64 nextFenceValue = 1;
+        U64 lastSubmittedFenceValue = 0;
         bool isInitialized = false;
         bool insideFrame = false;
         U64 frameIndex = 0;
+        std::chrono::steady_clock::time_point lastCompositionRenderTime{};
+        std::chrono::steady_clock::time_point lastCompositionPresentTime{};
+        bool hasCompositionRenderTime = false;
+        bool hasCompositionPresentTime = false;
+        static constexpr std::size_t kCadenceWindowSamples = 240;
+        static constexpr double kCadenceEpochGapMs = 1000.0;
+        std::deque<double> compositionRenderIntervalsMs;
+        std::deque<double> compositionPresentIntervalsMs;
+        double compositionRenderIntervalSumMs = 0.0;
+        double compositionPresentIntervalSumMs = 0.0;
+
+        static void recordCadenceInterval(
+            double intervalMs,
+            std::deque<double>& intervals,
+            double& intervalSumMs,
+            U64& sampleCount,
+            double& lastMs,
+            double& averageMs,
+            double& maxMs)
+        {
+            // A long interval means the viewport was inactive (or composition
+            // was being rebuilt), not that an active frame took this long.
+            // Start a fresh active epoch so the cadence telemetry describes
+            // what the user is currently seeing.
+            if (intervalMs > kCadenceEpochGapMs)
+            {
+                intervals.clear();
+                intervalSumMs = 0.0;
+                sampleCount = 0;
+                lastMs = 0.0;
+                averageMs = 0.0;
+                maxMs = 0.0;
+                return;
+            }
+
+            intervals.push_back(intervalMs);
+            intervalSumMs += intervalMs;
+            maxMs = std::max(maxMs, intervalMs);
+
+            if (intervals.size() > kCadenceWindowSamples)
+            {
+                const double removed = intervals.front();
+                intervals.pop_front();
+                intervalSumMs -= removed;
+                if (removed >= maxMs)
+                {
+                    maxMs = intervals.empty() ? 0.0 : *std::max_element(intervals.begin(), intervals.end());
+                }
+            }
+
+            sampleCount = static_cast<U64>(intervals.size());
+            lastMs = intervalMs;
+            averageMs = intervals.empty() ? 0.0 : intervalSumMs / static_cast<double>(intervals.size());
+        }
+
+        void pauseCompositionCadence()
+        {
+            // Composition can be detached when the console switches the
+            // viewport to the D2D bridge. Keep the last active rolling window
+            // available for STAT_RHI, but never measure the detached interval
+            // when composition resumes.
+            hasCompositionRenderTime = false;
+            hasCompositionPresentTime = false;
+        }
+
+        void recordCompositionRenderCadence()
+        {
+            const auto now = std::chrono::steady_clock::now();
+            if (hasCompositionRenderTime)
+            {
+                const double intervalMs = std::chrono::duration<double, std::milli>(now - lastCompositionRenderTime).count();
+                recordCadenceInterval(
+                    intervalMs,
+                    compositionRenderIntervalsMs,
+                    compositionRenderIntervalSumMs,
+                    gpuStats.compositionRenderIntervalSamples,
+                    gpuStats.compositionRenderIntervalLastMs,
+                    gpuStats.compositionRenderIntervalAvgMs,
+                    gpuStats.compositionRenderIntervalMaxMs);
+            }
+            lastCompositionRenderTime = now;
+            hasCompositionRenderTime = true;
+        }
+
+        void recordCompositionPresentCadence()
+        {
+            const auto now = std::chrono::steady_clock::now();
+            if (hasCompositionPresentTime)
+            {
+                const double intervalMs = std::chrono::duration<double, std::milli>(now - lastCompositionPresentTime).count();
+                recordCadenceInterval(
+                    intervalMs,
+                    compositionPresentIntervalsMs,
+                    compositionPresentIntervalSumMs,
+                    gpuStats.compositionPresentIntervalSamples,
+                    gpuStats.compositionPresentIntervalLastMs,
+                    gpuStats.compositionPresentIntervalAvgMs,
+                    gpuStats.compositionPresentIntervalMaxMs);
+            }
+            lastCompositionPresentTime = now;
+            hasCompositionPresentTime = true;
+        }
 
         Dx12DescriptorHeap rtvHeap;
         Dx12DescriptorHeap dsvHeap;
@@ -538,6 +712,19 @@ float4 PSMain(VSOut input) : SV_Target0
         std::unordered_map<U64, Dx12NativePipeline> pipelines;
         Dx12CompositionHost composition;
         Dx12ReadbackCache readbackCache;
+        std::deque<Dx12DeferredRelease> deferredReleases;
+
+        void collectDeferredReleases(bool force = false)
+        {
+            const U64 completed = force || !fence ? UINT64_MAX : fence->GetCompletedValue();
+            while (!deferredReleases.empty() && (force || deferredReleases.front().fenceValue <= completed))
+            {
+                auto release = std::move(deferredReleases.front());
+                deferredReleases.pop_front();
+                if (release.releaseRtv) { rtvHeap.release(release.rtvIndex); }
+                if (release.releaseDsv) { dsvHeap.release(release.dsvIndex); }
+            }
+        }
 
         bool initializeFactory(std::string* error)
         {
@@ -564,9 +751,18 @@ float4 PSMain(VSOut input) : SV_Target0
             for (UINT i = 0; ; ++i)
             {
                 ComPtr<IDXGIAdapter1> candidate;
-                if (factory->EnumAdapters1(i, &candidate) == DXGI_ERROR_NOT_FOUND)
+                const HRESULT enumHr = factory->EnumAdapterByGpuPreference(
+                    i,
+                    DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                    IID_PPV_ARGS(candidate.GetAddressOf()));
+                if (enumHr == DXGI_ERROR_NOT_FOUND)
                 {
                     break;
+                }
+                if (FAILED(enumHr))
+                {
+                    if (error) { *error = Hr("EnumAdapterByGpuPreference", enumHr); }
+                    return false;
                 }
 
                 DXGI_ADAPTER_DESC1 desc1{};
@@ -579,6 +775,7 @@ float4 PSMain(VSOut input) : SV_Target0
                 if (SUCCEEDED(D3D12CreateDevice(candidate.Get(), D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), nullptr)))
                 {
                     adapter = candidate;
+                    adapterDesc = desc1;
                     return true;
                 }
             }
@@ -624,6 +821,28 @@ float4 PSMain(VSOut input) : SV_Target0
             }
             commandList->Close();
 
+            const U32 frameCount = std::max<U32>(2, desc.framesInFlight);
+            commandSlots.reserve(frameCount * commandSlotsPerFrame);
+            commandSlots.push_back({allocator, commandList, 0});
+            for (U32 i = 1; i < frameCount * commandSlotsPerFrame; ++i)
+            {
+                Dx12CommandSlot slot{};
+                HRESULT slotHr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&slot.allocator));
+                if (FAILED(slotHr))
+                {
+                    if (error) { *error = Hr("CreateCommandAllocator frame slot", slotHr); }
+                    return false;
+                }
+                slotHr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr, IID_PPV_ARGS(&slot.commandList));
+                if (FAILED(slotHr))
+                {
+                    if (error) { *error = Hr("CreateCommandList frame slot", slotHr); }
+                    return false;
+                }
+                slot.commandList->Close();
+                commandSlots.push_back(std::move(slot));
+            }
+
             HRESULT fhr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
             if (FAILED(fhr))
             {
@@ -648,11 +867,32 @@ float4 PSMain(VSOut input) : SV_Target0
 
         bool resetCommandList(std::string* error)
         {
-            // ACE-PERF2: executeCommandList() is synchronous in this single-threaded
-            // debug RHI and already waits for the submitted fence. Waiting again before
-            // every allocator reset doubled the CPU-side stall count, especially on
-            // render+composition frames. UE-style command submission does not insert
-            // decorative waits just to make frame pacing sad.
+            const U32 frameCount = std::max<U32>(2, desc.framesInFlight);
+            if (submissionsThisFrame >= commandSlotsPerFrame)
+            {
+                if (error) { *error = "DX12 command slot budget exhausted for this frame."; }
+                return false;
+            }
+            const U32 frameSlot = static_cast<U32>(frameIndex % frameCount);
+            Dx12CommandSlot& slot = commandSlots[frameSlot * commandSlotsPerFrame + submissionsThisFrame++];
+            if (slot.fenceValue != 0 && fence->GetCompletedValue() < slot.fenceValue)
+            {
+                const HRESULT eventHr = fence->SetEventOnCompletion(slot.fenceValue, fenceEvent);
+                if (FAILED(eventHr))
+                {
+                    if (error) { *error = Hr("Fence::SetEventOnCompletion command slot", eventHr); }
+                    return false;
+                }
+                const auto waitStart = std::chrono::steady_clock::now();
+                WaitForSingleObject(fenceEvent, INFINITE);
+                const auto waitEnd = std::chrono::steady_clock::now();
+                ++gpuStats.blockingFenceWaits;
+                gpuStats.blockingFenceWaitMs += std::chrono::duration<double, std::milli>(waitEnd - waitStart).count();
+            }
+
+            activeCommandSlot = &slot;
+            allocator = slot.allocator;
+            commandList = slot.commandList;
             const HRESULT ahr = allocator->Reset();
             if (FAILED(ahr))
             {
@@ -670,7 +910,7 @@ float4 PSMain(VSOut input) : SV_Target0
             return true;
         }
 
-        bool executeCommandList(std::string* error)
+        bool executeCommandList(std::string* error, bool waitForCompletion = false)
         {
             const HRESULT closeHr = commandList->Close();
             if (FAILED(closeHr))
@@ -691,7 +931,14 @@ float4 PSMain(VSOut input) : SV_Target0
                 return false;
             }
 
-            if (fence->GetCompletedValue() < signalValue)
+            lastSubmittedFenceValue = signalValue;
+
+            if (activeCommandSlot)
+            {
+                activeCommandSlot->fenceValue = signalValue;
+            }
+
+            if (waitForCompletion && fence->GetCompletedValue() < signalValue)
             {
                 const HRESULT eventHr = fence->SetEventOnCompletion(signalValue, fenceEvent);
                 if (FAILED(eventHr))
@@ -707,6 +954,7 @@ float4 PSMain(VSOut input) : SV_Target0
             }
 
             gpuStats.completedFenceValue = fence->GetCompletedValue();
+            collectDeferredReleases();
             return true;
         }
 
@@ -964,15 +1212,42 @@ float4 PSMain(VSOut input) : SV_Target0
                 return false;
             }
 
-            ComPtr<ID3DBlob> vs;
-            ComPtr<ID3DBlob> ps;
-            if (!compileShader(kAceRhi3BasicColorHlsl, "VSMain", "vs_5_0", vs, error))
+            const auto* vertexShaderDesc = registry.desc(pipelineDesc->vs);
+            const auto* pixelShaderDesc = pipelineDesc->ps.valid() ? registry.desc(pipelineDesc->ps) : nullptr;
+            if (!vertexShaderDesc)
             {
+                if (error) { *error = "DX12 pipeline references a missing vertex shader."; }
                 return false;
             }
-            if (!compileShader(kAceRhi3BasicColorHlsl, "PSMain", "ps_5_0", ps, error))
+
+            ComPtr<ID3DBlob> vs;
+            ComPtr<ID3DBlob> ps;
+            D3D12_SHADER_BYTECODE vsBytecode{};
+            D3D12_SHADER_BYTECODE psBytecode{};
+            if (!vertexShaderDesc->bytecode.empty())
             {
-                return false;
+                vsBytecode = {vertexShaderDesc->bytecode.data(), vertexShaderDesc->bytecode.size()};
+            }
+            else
+            {
+                const char* source = vertexShaderDesc->debugSource.empty() ? kAceRhi3BasicColorHlsl : vertexShaderDesc->debugSource.c_str();
+                const char* entry = vertexShaderDesc->debugSource.empty() ? "VSMain" : vertexShaderDesc->entry.c_str();
+                const char* profile = vertexShaderDesc->profile.empty() ? "vs_5_0" : vertexShaderDesc->profile.c_str();
+                if (!compileShader(source, entry, profile, vs, error)) { return false; }
+                vsBytecode = {vs->GetBufferPointer(), vs->GetBufferSize()};
+            }
+
+            if (pixelShaderDesc && !pixelShaderDesc->bytecode.empty())
+            {
+                psBytecode = {pixelShaderDesc->bytecode.data(), pixelShaderDesc->bytecode.size()};
+            }
+            else
+            {
+                const char* source = pixelShaderDesc && !pixelShaderDesc->debugSource.empty() ? pixelShaderDesc->debugSource.c_str() : kAceRhi3BasicColorHlsl;
+                const char* entry = pixelShaderDesc && !pixelShaderDesc->debugSource.empty() ? pixelShaderDesc->entry.c_str() : "PSMain";
+                const char* profile = pixelShaderDesc && !pixelShaderDesc->profile.empty() ? pixelShaderDesc->profile.c_str() : "ps_5_0";
+                if (!compileShader(source, entry, profile, ps, error)) { return false; }
+                psBytecode = {ps->GetBufferPointer(), ps->GetBufferSize()};
             }
 
             D3D12_ROOT_PARAMETER rootParameters[1]{};
@@ -1020,27 +1295,40 @@ float4 PSMain(VSOut input) : SV_Target0
                 return false;
             }
 
-            D3D12_INPUT_ELEMENT_DESC inputLayout[2]{};
-            inputLayout[0].SemanticName = "POSITION";
-            inputLayout[0].SemanticIndex = 0;
-            inputLayout[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
-            inputLayout[0].InputSlot = 0;
-            inputLayout[0].AlignedByteOffset = 0;
-            inputLayout[0].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
-            inputLayout[0].InstanceDataStepRate = 0;
-
-            inputLayout[1].SemanticName = "COLOR";
-            inputLayout[1].SemanticIndex = 0;
-            inputLayout[1].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-            inputLayout[1].InputSlot = 0;
-            inputLayout[1].AlignedByteOffset = 12;
-            inputLayout[1].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
-            inputLayout[1].InstanceDataStepRate = 0;
+            std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
+            if (pipelineDesc->attributes.empty())
+            {
+                inputLayout = {
+                    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+                    {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+                };
+            }
+            else
+            {
+                inputLayout.reserve(pipelineDesc->attributes.size());
+                for (const auto& attribute : pipelineDesc->attributes)
+                {
+                    bool perInstance = false;
+                    for (const auto& binding : pipelineDesc->bindings)
+                    {
+                        if (binding.binding == attribute.binding) { perInstance = binding.perInstance; break; }
+                    }
+                    D3D12_INPUT_ELEMENT_DESC element{};
+                    element.SemanticName = attribute.semantic.c_str();
+                    element.SemanticIndex = attribute.location;
+                    element.Format = ToDxgi(attribute.format);
+                    element.InputSlot = attribute.binding;
+                    element.AlignedByteOffset = attribute.offset;
+                    element.InputSlotClass = perInstance ? D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+                    element.InstanceDataStepRate = perInstance ? 1u : 0u;
+                    inputLayout.push_back(element);
+                }
+            }
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
             pso.pRootSignature = rootSignature.Get();
-            pso.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
-            pso.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+            pso.VS = vsBytecode;
+            pso.PS = psBytecode;
             pso.BlendState.AlphaToCoverageEnable = FALSE;
             pso.BlendState.IndependentBlendEnable = FALSE;
             for (auto& target : pso.BlendState.RenderTarget)
@@ -1056,23 +1344,33 @@ float4 PSMain(VSOut input) : SV_Target0
                 target.LogicOp = D3D12_LOGIC_OP_NOOP;
                 target.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
             }
+            for (std::size_t i = 0; i < pipelineDesc->blends.size() && i < 8; ++i)
+            {
+                auto& target = pso.BlendState.RenderTarget[i];
+                target.BlendEnable = pipelineDesc->blends[i].enabled ? TRUE : FALSE;
+                target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+                target.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+                target.SrcBlendAlpha = D3D12_BLEND_ONE;
+                target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+                target.RenderTargetWriteMask = pipelineDesc->blends[i].writeMask;
+            }
 
             pso.SampleMask = UINT_MAX;
-            pso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-            pso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-            pso.RasterizerState.FrontCounterClockwise = FALSE;
+            pso.RasterizerState.FillMode = pipelineDesc->raster.fill == 1 ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
+            pso.RasterizerState.CullMode = pipelineDesc->raster.cull == 0 ? D3D12_CULL_MODE_NONE : (pipelineDesc->raster.cull == 1 ? D3D12_CULL_MODE_FRONT : D3D12_CULL_MODE_BACK);
+            pso.RasterizerState.FrontCounterClockwise = pipelineDesc->raster.frontCCW ? TRUE : FALSE;
             pso.RasterizerState.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
             pso.RasterizerState.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
             pso.RasterizerState.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
-            pso.RasterizerState.DepthClipEnable = TRUE;
+            pso.RasterizerState.DepthClipEnable = pipelineDesc->raster.depthClip ? TRUE : FALSE;
             pso.RasterizerState.MultisampleEnable = FALSE;
             pso.RasterizerState.AntialiasedLineEnable = FALSE;
             pso.RasterizerState.ForcedSampleCount = 0;
             pso.RasterizerState.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
 
-            pso.DepthStencilState.DepthEnable = pipelineDesc->depthFormat != Format::Unknown;
-            pso.DepthStencilState.DepthWriteMask = pso.DepthStencilState.DepthEnable ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-            pso.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+            pso.DepthStencilState.DepthEnable = pipelineDesc->depthFormat != Format::Unknown && pipelineDesc->depth.test;
+            pso.DepthStencilState.DepthWriteMask = pso.DepthStencilState.DepthEnable && pipelineDesc->depth.write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+            pso.DepthStencilState.DepthFunc = ToComparison(pipelineDesc->depth.compare);
             pso.DepthStencilState.StencilEnable = FALSE;
             pso.DepthStencilState.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
             pso.DepthStencilState.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
@@ -1082,7 +1380,7 @@ float4 PSMain(VSOut input) : SV_Target0
             pso.DepthStencilState.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
             pso.DepthStencilState.BackFace = pso.DepthStencilState.FrontFace;
 
-            pso.InputLayout = { inputLayout, 2 };
+            pso.InputLayout = { inputLayout.data(), static_cast<UINT>(inputLayout.size()) };
             pso.PrimitiveTopologyType = ToTopologyType(pipelineDesc->topology);
             pso.NumRenderTargets = static_cast<UINT>(std::min<std::size_t>(pipelineDesc->colorFormats.size(), 8));
             for (UINT i = 0; i < pso.NumRenderTargets; ++i)
@@ -1151,8 +1449,16 @@ float4 PSMain(VSOut input) : SV_Target0
 
         void resetComposition()
         {
+            if (composition.frameLatencyWaitable)
+            {
+                CloseHandle(composition.frameLatencyWaitable);
+                composition.frameLatencyWaitable = nullptr;
+            }
             composition.swapChain.Reset();
-            composition.dcompVisual.Reset();
+            composition.overlayContent.Reset();
+            composition.dcompOverlayVisual.Reset();
+            composition.dcompSceneVisual.Reset();
+            composition.dcompRootVisual.Reset();
             composition.dcompTarget.Reset();
             composition.dcompDevice.Reset();
             composition.backBufferStates.clear();
@@ -1160,7 +1466,11 @@ float4 PSMain(VSOut input) : SV_Target0
             composition.extent = {};
             composition.left = 0.0f;
             composition.top = 0.0f;
+            composition.overlayLeft = 0.0f;
+            composition.overlayTop = 0.0f;
+            composition.overlayExtent = {};
             composition.ready = false;
+            pauseCompositionCadence();
         }
 
         bool ensureComposition(HWND hwnd, Extent2D extent, float left, float top, std::string* error)
@@ -1179,6 +1489,7 @@ float4 PSMain(VSOut input) : SV_Target0
                 composition.hwnd == hwnd &&
                 composition.extent.width == extent.width &&
                 composition.extent.height == extent.height;
+            bool needsCommit = false;
 
             if (!composition.ready || composition.hwnd != hwnd)
             {
@@ -1199,15 +1510,36 @@ float4 PSMain(VSOut input) : SV_Target0
                     return false;
                 }
 
-                const HRESULT visualHr = composition.dcompDevice->CreateVisual(&composition.dcompVisual);
-                if (FAILED(visualHr))
+                const HRESULT rootVisualHr = composition.dcompDevice->CreateVisual(&composition.dcompRootVisual);
+                const HRESULT sceneVisualHr = composition.dcompDevice->CreateVisual(&composition.dcompSceneVisual);
+                const HRESULT overlayVisualHr = composition.dcompDevice->CreateVisual(&composition.dcompOverlayVisual);
+                if (FAILED(rootVisualHr) || FAILED(sceneVisualHr) || FAILED(overlayVisualHr))
                 {
-                    if (error) { *error = Hr("CreateVisual", visualHr); }
+                    const HRESULT failedHr = FAILED(rootVisualHr) ? rootVisualHr : (FAILED(sceneVisualHr) ? sceneVisualHr : overlayVisualHr);
+                    if (error) { *error = Hr("CreateVisual composition layer tree", failedHr); }
                     resetComposition();
                     return false;
                 }
 
-                const HRESULT rootHr = composition.dcompTarget->SetRoot(composition.dcompVisual.Get());
+                HRESULT hierarchyHr = composition.dcompRootVisual->AddVisual(composition.dcompSceneVisual.Get(), FALSE, nullptr);
+                if (SUCCEEDED(hierarchyHr))
+                {
+                    // Explicit sibling relation: the D2D/DWrite visual is in
+                    // front of SceneColor. Do not rely on NULL-reference list
+                    // insertion semantics for the layer that users must read.
+                    hierarchyHr = composition.dcompRootVisual->AddVisual(
+                        composition.dcompOverlayVisual.Get(),
+                        TRUE,
+                        composition.dcompSceneVisual.Get());
+                }
+                if (FAILED(hierarchyHr))
+                {
+                    if (error) { *error = Hr("IDCompositionVisual::AddVisual scene/UI layers", hierarchyHr); }
+                    resetComposition();
+                    return false;
+                }
+
+                const HRESULT rootHr = composition.dcompTarget->SetRoot(composition.dcompRootVisual.Get());
                 if (FAILED(rootHr))
                 {
                     if (error) { *error = Hr("IDCompositionTarget::SetRoot", rootHr); }
@@ -1216,11 +1548,17 @@ float4 PSMain(VSOut input) : SV_Target0
                 }
 
                 composition.hwnd = hwnd;
+                needsCommit = true;
             }
 
             if (!sameTarget || !composition.swapChain)
             {
                 waitIdle();
+                if (composition.frameLatencyWaitable)
+                {
+                    CloseHandle(composition.frameLatencyWaitable);
+                    composition.frameLatencyWaitable = nullptr;
+                }
 
                 DXGI_SWAP_CHAIN_DESC1 swapDesc{};
                 swapDesc.Width = extent.width;
@@ -1230,11 +1568,12 @@ float4 PSMain(VSOut input) : SV_Target0
                 swapDesc.SampleDesc.Count = 1;
                 swapDesc.SampleDesc.Quality = 0;
                 swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-                swapDesc.BufferCount = 2;
+                const UINT compositionBufferCount = std::max<UINT>(2u, desc.framesInFlight);
+                swapDesc.BufferCount = compositionBufferCount;
                 swapDesc.Scaling = DXGI_SCALING_STRETCH;
                 swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
                 swapDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-                swapDesc.Flags = 0;
+                swapDesc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
                 ComPtr<IDXGISwapChain1> swapChain1;
                 const HRESULT swapHr = factory->CreateSwapChainForComposition(
@@ -1256,44 +1595,114 @@ float4 PSMain(VSOut input) : SV_Target0
                     return false;
                 }
 
-                const HRESULT contentHr = composition.dcompVisual->SetContent(composition.swapChain.Get());
+                const HRESULT contentHr = composition.dcompSceneVisual->SetContent(composition.swapChain.Get());
                 if (FAILED(contentHr))
                 {
                     if (error) { *error = Hr("IDCompositionVisual::SetContent", contentHr); }
                     return false;
                 }
 
-                composition.backBufferStates.assign(2, D3D12_RESOURCE_STATE_PRESENT);
+                composition.backBufferStates.assign(compositionBufferCount, D3D12_RESOURCE_STATE_PRESENT);
                 composition.extent = extent;
                 ++gpuStats.compositionResizes;
+                needsCommit = true;
+
+                D2D_RECT_F clipRect{};
+                clipRect.right = static_cast<float>(extent.width);
+                clipRect.bottom = static_cast<float>(extent.height);
+                composition.dcompSceneVisual->SetClip(clipRect);
             }
 
             if (composition.left != left || composition.top != top)
             {
-                composition.dcompVisual->SetOffsetX(left);
-                composition.dcompVisual->SetOffsetY(top);
+                composition.dcompSceneVisual->SetOffsetX(left);
+                composition.dcompSceneVisual->SetOffsetY(top);
                 composition.left = left;
                 composition.top = top;
+                needsCommit = true;
             }
 
-            if (composition.dcompVisual)
+            // Present updates swapchain content without mutating the DirectComposition
+            // visual tree. Commit only setup, resize, and placement changes.
+            if (needsCommit)
             {
-                D2D_RECT_F clipRect{};
-                clipRect.left = 0.0f;
-                clipRect.top = 0.0f;
-                clipRect.right = static_cast<float>(extent.width);
-                clipRect.bottom = static_cast<float>(extent.height);
-                composition.dcompVisual->SetClip(clipRect);
+                const HRESULT commitHr = composition.dcompDevice->Commit();
+                if (FAILED(commitHr))
+                {
+                    if (error) { *error = Hr("IDCompositionDevice::Commit", commitHr); }
+                    return false;
+                }
+
+                Microsoft::WRL::ComPtr<IDXGISwapChain2> latencySwapChain;
+                const HRESULT latencyQueryHr = composition.swapChain.As(&latencySwapChain);
+                if (FAILED(latencyQueryHr) || !latencySwapChain)
+                {
+                    if (error) { *error = Hr("Query IDXGISwapChain2 frame pacing", latencyQueryHr); }
+                    return false;
+                }
+                const HRESULT latencyHr = latencySwapChain->SetMaximumFrameLatency(1);
+                if (FAILED(latencyHr))
+                {
+                    if (error) { *error = Hr("IDXGISwapChain2::SetMaximumFrameLatency", latencyHr); }
+                    return false;
+                }
+                composition.frameLatencyWaitable = latencySwapChain->GetFrameLatencyWaitableObject();
+                if (!composition.frameLatencyWaitable)
+                {
+                    if (error) { *error = "GetFrameLatencyWaitableObject returned null."; }
+                    return false;
+                }
             }
+
+            composition.ready = true;
+            return true;
+        }
+
+        bool setCompositionOverlay(IUnknown* content, float left, float top, Extent2D extent, std::string* error)
+        {
+            if (!composition.ready || !composition.dcompDevice || !composition.dcompOverlayVisual || !content)
+            {
+                if (error) { *error = "DirectComposition overlay requires a live scene visual tree and content swapchain."; }
+                return false;
+            }
+
+            extent.width = std::max<U32>(1, extent.width);
+            extent.height = std::max<U32>(1, extent.height);
+            const bool contentChanged = composition.overlayContent.Get() != content;
+            const bool placementChanged = composition.overlayLeft != left || composition.overlayTop != top ||
+                composition.overlayExtent.width != extent.width || composition.overlayExtent.height != extent.height;
+            if (!contentChanged && !placementChanged)
+            {
+                return true;
+            }
+
+            if (contentChanged)
+            {
+                const HRESULT contentHr = composition.dcompOverlayVisual->SetContent(content);
+                if (FAILED(contentHr))
+                {
+                    if (error) { *error = Hr("IDCompositionVisual::SetContent D2D overlay", contentHr); }
+                    return false;
+                }
+                composition.overlayContent = content;
+            }
+
+            composition.dcompOverlayVisual->SetOffsetX(left);
+            composition.dcompOverlayVisual->SetOffsetY(top);
+            D2D_RECT_F clipRect{};
+            clipRect.right = static_cast<float>(extent.width);
+            clipRect.bottom = static_cast<float>(extent.height);
+            composition.dcompOverlayVisual->SetClip(clipRect);
+            composition.overlayLeft = left;
+            composition.overlayTop = top;
+            composition.overlayExtent = extent;
 
             const HRESULT commitHr = composition.dcompDevice->Commit();
             if (FAILED(commitHr))
             {
-                if (error) { *error = Hr("IDCompositionDevice::Commit", commitHr); }
+                if (error) { *error = Hr("IDCompositionDevice::Commit D2D overlay", commitHr); }
                 return false;
             }
-
-            composition.ready = true;
             return true;
         }
 
@@ -1320,6 +1729,13 @@ float4 PSMain(VSOut input) : SV_Target0
             if (!ensureComposition(hwnd, extent, left, top, error))
             {
                 return false;
+            }
+
+            if (composition.frameLatencyWaitable &&
+                WaitForSingleObject(composition.frameLatencyWaitable, 0) != WAIT_OBJECT_0)
+            {
+                ++gpuStats.compositionPacingSkips;
+                return true;
             }
 
             const UINT backBufferIndex = composition.swapChain->GetCurrentBackBufferIndex();
@@ -1373,17 +1789,15 @@ float4 PSMain(VSOut input) : SV_Target0
                 return false;
             }
 
-            const HRESULT presentHr = composition.swapChain->Present(0, 0);
+            const HRESULT presentHr = composition.swapChain->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
+            if (presentHr == DXGI_ERROR_WAS_STILL_DRAWING)
+            {
+                ++gpuStats.compositionPresentSkips;
+                return true;
+            }
             if (FAILED(presentHr))
             {
                 if (error) { *error = Hr("composition swapchain Present", presentHr); }
-                return false;
-            }
-
-            const HRESULT commitHr = composition.dcompDevice->Commit();
-            if (FAILED(commitHr))
-            {
-                if (error) { *error = Hr("composition Commit", commitHr); }
                 return false;
             }
 
@@ -1429,6 +1843,7 @@ float4 PSMain(VSOut input) : SV_Target0
         }
 
         impl_->waitIdle();
+        impl_->collectDeferredReleases(true);
         impl_->resetComposition();
         impl_->readbackCache.reset();
 
@@ -1442,6 +1857,7 @@ float4 PSMain(VSOut input) : SV_Target0
         impl_->buffers.clear();
         impl_->textures.clear();
         impl_->pipelines.clear();
+        impl_->deferredReleases.clear();
         impl_->uploadArena.shutdown();
 
         if (impl_->fenceEvent)
@@ -1452,6 +1868,8 @@ float4 PSMain(VSOut input) : SV_Target0
 
         impl_->commandList.Reset();
         impl_->allocator.Reset();
+        impl_->activeCommandSlot = nullptr;
+        impl_->commandSlots.clear();
         impl_->graphicsQueue.Reset();
         impl_->fence.Reset();
         impl_->rtvHeap.heap.Reset();
@@ -1479,6 +1897,9 @@ float4 PSMain(VSOut input) : SV_Target0
         }
         impl_->insideFrame = true;
         impl_->frameIndex = frame;
+        impl_->submissionsThisFrame = 0;
+        impl_->activeCommandSlot = nullptr;
+        impl_->collectDeferredReleases();
         impl_->uploadArena.reset();
         return true;
     }
@@ -1494,6 +1915,19 @@ float4 PSMain(VSOut input) : SV_Target0
         if (!info.list)
         {
             if (e) { *e = "DX12 submit missing command list."; }
+            return false;
+        }
+
+        if (info.queue != info.list->queue())
+        {
+            if (e) { *e = "DX12 submit queue does not match command list queue."; }
+            ++impl_->deviceStats.validationErrors;
+            return false;
+        }
+        if (info.queue != Queue::Graphics)
+        {
+            if (e) { *e = "DX12 compute/copy queue submission is not implemented yet."; }
+            ++impl_->deviceStats.validationErrors;
             return false;
         }
 
@@ -1722,6 +2156,81 @@ float4 PSMain(VSOut input) : SV_Target0
     void Dx12Device::waitIdle()
     {
         impl_->waitIdle();
+        impl_->collectDeferredReleases();
+    }
+
+    bool Dx12Device::destroy(Buffer h, std::string* e)
+    {
+        const U64 key = Key(h.h);
+        auto it = impl_->buffers.find(key);
+        if (it != impl_->buffers.end())
+        {
+            if (it->second.resource && it->second.mapped)
+            {
+                it->second.resource->Unmap(0, nullptr);
+                it->second.mapped = nullptr;
+            }
+            Dx12DeferredRelease release{};
+            release.fenceValue = impl_->lastSubmittedFenceValue;
+            release.resource = std::move(it->second.resource);
+            impl_->deferredReleases.push_back(std::move(release));
+            impl_->buffers.erase(it);
+            if (impl_->gpuStats.nativeBuffers > 0) { --impl_->gpuStats.nativeBuffers; }
+        }
+        const bool ok = impl_->registry.destroy(h, e);
+        impl_->collectDeferredReleases();
+        return ok;
+    }
+
+    bool Dx12Device::destroy(Texture h, std::string* e)
+    {
+        const U64 key = Key(h.h);
+        auto it = impl_->textures.find(key);
+        if (it != impl_->textures.end())
+        {
+            Dx12DeferredRelease release{};
+            release.fenceValue = impl_->lastSubmittedFenceValue;
+            release.resource = std::move(it->second.resource);
+            release.releaseRtv = it->second.hasRtv;
+            release.releaseDsv = it->second.hasDsv;
+            release.rtvIndex = it->second.rtv.index;
+            release.dsvIndex = it->second.dsv.index;
+            impl_->deferredReleases.push_back(std::move(release));
+            impl_->textures.erase(it);
+            if (impl_->gpuStats.nativeTextures > 0) { --impl_->gpuStats.nativeTextures; }
+        }
+        const bool ok = impl_->registry.destroy(h, e);
+        impl_->collectDeferredReleases();
+        return ok;
+    }
+
+    bool Dx12Device::destroy(Sampler h, std::string* e)
+    {
+        return impl_->registry.destroy(h, e);
+    }
+
+    bool Dx12Device::destroy(Shader h, std::string* e)
+    {
+        return impl_->registry.destroy(h, e);
+    }
+
+    bool Dx12Device::destroy(Pipeline h, std::string* e)
+    {
+        const U64 key = Key(h.h);
+        auto it = impl_->pipelines.find(key);
+        if (it != impl_->pipelines.end())
+        {
+            Dx12DeferredRelease release{};
+            release.fenceValue = impl_->lastSubmittedFenceValue;
+            release.rootSignature = std::move(it->second.rootSignature);
+            release.pipelineState = std::move(it->second.state);
+            impl_->deferredReleases.push_back(std::move(release));
+            impl_->pipelines.erase(it);
+            if (impl_->gpuStats.nativePipelines > 0) { --impl_->gpuStats.nativePipelines; }
+        }
+        const bool ok = impl_->registry.destroy(h, e);
+        impl_->collectDeferredReleases();
+        return ok;
     }
 
     Registry& Dx12Device::resources()
@@ -1828,7 +2337,7 @@ float4 PSMain(VSOut input) : SV_Target0
         impl_->transition(*nativeDst, D3D12_RESOURCE_STATE_COPY_DEST);
         impl_->commandList->CopyBufferRegion(nativeDst->resource.Get(), 0, impl_->uploadArena.resource.Get(), uploadOffset, size);
 
-        return impl_->executeCommandList(e);
+        return impl_->executeCommandList(e, true);
     }
 
     bool Dx12Device::clear(Texture target, Color color, std::string* e)
@@ -1895,11 +2404,14 @@ float4 PSMain(VSOut input) : SV_Target0
         auto depthTexture = impl_->registry.create(depthDesc, e);
         if (!depthTexture.valid())
         {
+            impl_->registry.destroy(colorTexture, nullptr);
             return false;
         }
 
         if (!impl_->ensureTexture(colorTexture, e) || !impl_->ensureTexture(depthTexture, e))
         {
+            destroy(colorTexture, nullptr);
+            destroy(depthTexture, nullptr);
             return false;
         }
 
@@ -1928,20 +2440,20 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        auto* native = impl_->native(source);
-        if (!native || !native->resource)
+        auto* nativeSource = impl_->native(source);
+        if (!nativeSource || !nativeSource->resource)
         {
             if (e) { *e = "DX12 readback missing native source texture."; }
             return false;
         }
 
-        if (native->desc.format != Format::BGRA8 && native->desc.format != Format::RGBA8)
+        if (nativeSource->desc.format != Format::BGRA8 && nativeSource->desc.format != Format::RGBA8)
         {
             if (e) { *e = "DX12 readback currently supports BGRA8/RGBA8 only."; }
             return false;
         }
 
-        const auto resourceDesc = native->resource->GetDesc();
+        const auto resourceDesc = nativeSource->resource->GetDesc();
         if (!impl_->readbackCache.matches(resourceDesc))
         {
             impl_->readbackCache.reset();
@@ -1986,10 +2498,10 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        impl_->transition(*native, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        impl_->transition(*nativeSource, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
         D3D12_TEXTURE_COPY_LOCATION srcLoc{};
-        srcLoc.pResource = native->resource.Get();
+        srcLoc.pResource = nativeSource->resource.Get();
         srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
         srcLoc.SubresourceIndex = 0;
 
@@ -2000,7 +2512,7 @@ float4 PSMain(VSOut input) : SV_Target0
 
         impl_->commandList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
-        if (!impl_->executeCommandList(e))
+        if (!impl_->executeCommandList(e, true))
         {
             return false;
         }
@@ -2014,8 +2526,8 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        const U32 width = static_cast<U32>(native->desc.extent.width);
-        const U32 height = static_cast<U32>(native->desc.extent.height);
+        const U32 width = static_cast<U32>(nativeSource->desc.extent.width);
+        const U32 height = static_cast<U32>(nativeSource->desc.extent.height);
         pixels->assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0U);
 
         const auto* srcBytes = static_cast<const U8*>(mapped) + impl_->readbackCache.footprint.Offset;
@@ -2055,6 +2567,13 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
+        if (info.queue != info.list->queue() || info.queue != Queue::Graphics)
+        {
+            if (e) { *e = "DX12 combined submit/readback requires a matching graphics queue/list."; }
+            ++impl_->deviceStats.validationErrors;
+            return false;
+        }
+
         if (!pixels)
         {
             if (e) { *e = "DX12 combined submit/readback requires output pixel vector."; }
@@ -2072,20 +2591,20 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        auto* native = impl_->native(source);
-        if (!native || !native->resource)
+        auto* nativeCombinedSource = impl_->native(source);
+        if (!nativeCombinedSource || !nativeCombinedSource->resource)
         {
             if (e) { *e = "DX12 combined submit/readback missing native source texture."; }
             return false;
         }
 
-        if (native->desc.format != Format::BGRA8 && native->desc.format != Format::RGBA8)
+        if (nativeCombinedSource->desc.format != Format::BGRA8 && nativeCombinedSource->desc.format != Format::RGBA8)
         {
             if (e) { *e = "DX12 combined submit/readback currently supports BGRA8/RGBA8 only."; }
             return false;
         }
 
-        const auto resourceDesc = native->resource->GetDesc();
+        const auto resourceDesc = nativeCombinedSource->resource->GetDesc();
         if (!impl_->readbackCache.matches(resourceDesc))
         {
             impl_->readbackCache.reset();
@@ -2319,15 +2838,15 @@ float4 PSMain(VSOut input) : SV_Target0
 
             if (std::holds_alternative<CmdDispatch>(command))
             {
-                // Compute root signatures/pipelines are a later RHI milestone.
-                continue;
+                if (e) { *e = "DX12 compute dispatch reached graphics submission unexpectedly."; }
+                return false;
             }
         }
 
-        impl_->transition(*native, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        impl_->transition(*nativeCombinedSource, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
         D3D12_TEXTURE_COPY_LOCATION srcLoc{};
-        srcLoc.pResource = native->resource.Get();
+        srcLoc.pResource = nativeCombinedSource->resource.Get();
         srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
         srcLoc.SubresourceIndex = 0;
 
@@ -2338,7 +2857,7 @@ float4 PSMain(VSOut input) : SV_Target0
 
         impl_->commandList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
-        if (!impl_->executeCommandList(e))
+        if (!impl_->executeCommandList(e, true))
         {
             return false;
         }
@@ -2355,8 +2874,8 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        const U32 width = static_cast<U32>(native->desc.extent.width);
-        const U32 height = static_cast<U32>(native->desc.extent.height);
+        const U32 width = static_cast<U32>(nativeCombinedSource->desc.extent.width);
+        const U32 height = static_cast<U32>(nativeCombinedSource->desc.extent.height);
         pixels->assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0U);
 
         const auto* srcBytes = static_cast<const U8*>(mapped) + impl_->readbackCache.footprint.Offset;
@@ -2399,6 +2918,13 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
+        if (info.queue != info.list->queue() || info.queue != Queue::Graphics)
+        {
+            if (e) { *e = "DX12 combined submit/present requires a matching graphics queue/list."; }
+            ++impl_->deviceStats.validationErrors;
+            return false;
+        }
+
         if (!info.list->validate(impl_->registry, e))
         {
             ++impl_->deviceStats.validationErrors;
@@ -2410,14 +2936,14 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        auto* src = impl_->native(source);
-        if (!src || !src->resource)
+        auto* compositionSource = impl_->native(source);
+        if (!compositionSource || !compositionSource->resource)
         {
             if (e) { *e = "DX12 combined submit/present missing native source texture."; }
             return false;
         }
 
-        if (src->desc.format != Format::BGRA8)
+        if (compositionSource->desc.format != Format::BGRA8)
         {
             if (e) { *e = "DX12 combined submit/present currently requires BGRA8 SceneColor."; }
             return false;
@@ -2428,13 +2954,30 @@ float4 PSMain(VSOut input) : SV_Target0
             return false;
         }
 
-        const UINT backBufferIndex = impl_->composition.swapChain->GetCurrentBackBufferIndex();
-        ComPtr<ID3D12Resource> backBuffer;
-        const HRESULT bufferHr = impl_->composition.swapChain->GetBuffer(backBufferIndex, IID_PPV_ARGS(&backBuffer));
-        if (FAILED(bufferHr))
+        // Render throughput and desktop presentation are separate clocks.  DXGI's
+        // latency object only gates acquisition of a composition backbuffer; it
+        // must not discard the scene command list.  This mirrors the RHI/viewport
+        // split used by full engines: render every accepted engine frame, present
+        // the newest completed image when the compositor has room.
+        const bool presentThisFrame = !impl_->composition.frameLatencyWaitable ||
+            WaitForSingleObject(impl_->composition.frameLatencyWaitable, 0) == WAIT_OBJECT_0;
+        if (!presentThisFrame)
         {
-            if (e) { *e = Hr("IDXGISwapChain::GetBuffer", bufferHr); }
-            return false;
+            ++impl_->gpuStats.compositionPacingSkips;
+            ++impl_->gpuStats.compositionRenderOnlyFrames;
+        }
+
+        UINT backBufferIndex = 0;
+        ComPtr<ID3D12Resource> backBuffer;
+        if (presentThisFrame)
+        {
+            backBufferIndex = impl_->composition.swapChain->GetCurrentBackBufferIndex();
+            const HRESULT bufferHr = impl_->composition.swapChain->GetBuffer(backBufferIndex, IID_PPV_ARGS(&backBuffer));
+            if (FAILED(bufferHr))
+            {
+                if (e) { *e = Hr("IDXGISwapChain::GetBuffer", bufferHr); }
+                return false;
+            }
         }
 
         if (!impl_->resetCommandList(e))
@@ -2637,63 +3180,73 @@ float4 PSMain(VSOut input) : SV_Target0
             }
         }
 
-        impl_->transition(*src, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-        auto before = impl_->composition.backBufferStates.size() > backBufferIndex ?
-            impl_->composition.backBufferStates[backBufferIndex] :
-            D3D12_RESOURCE_STATE_PRESENT;
-
-        if (before != D3D12_RESOURCE_STATE_COPY_DEST)
+        if (presentThisFrame)
         {
-            auto barrier = Transition(backBuffer.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST);
-            impl_->commandList->ResourceBarrier(1, &barrier);
-            before = D3D12_RESOURCE_STATE_COPY_DEST;
-        }
+            impl_->transition(*compositionSource, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-        D3D12_TEXTURE_COPY_LOCATION dstLoc{};
-        dstLoc.pResource = backBuffer.Get();
-        dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dstLoc.SubresourceIndex = 0;
+            auto before = impl_->composition.backBufferStates.size() > backBufferIndex ?
+                impl_->composition.backBufferStates[backBufferIndex] :
+                D3D12_RESOURCE_STATE_PRESENT;
 
-        D3D12_TEXTURE_COPY_LOCATION srcLoc{};
-        srcLoc.pResource = src->resource.Get();
-        srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        srcLoc.SubresourceIndex = 0;
+            if (before != D3D12_RESOURCE_STATE_COPY_DEST)
+            {
+                auto barrier = Transition(backBuffer.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST);
+                impl_->commandList->ResourceBarrier(1, &barrier);
+            }
 
-        impl_->commandList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+            D3D12_TEXTURE_COPY_LOCATION dstLoc{};
+            dstLoc.pResource = backBuffer.Get();
+            dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            dstLoc.SubresourceIndex = 0;
 
-        auto presentBarrier = Transition(backBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
-        impl_->commandList->ResourceBarrier(1, &presentBarrier);
-        if (impl_->composition.backBufferStates.size() > backBufferIndex)
-        {
-            impl_->composition.backBufferStates[backBufferIndex] = D3D12_RESOURCE_STATE_PRESENT;
+            D3D12_TEXTURE_COPY_LOCATION srcLoc{};
+            srcLoc.pResource = compositionSource->resource.Get();
+            srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            srcLoc.SubresourceIndex = 0;
+
+            impl_->commandList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
+
+            auto presentBarrier = Transition(backBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
+            impl_->commandList->ResourceBarrier(1, &presentBarrier);
+            if (impl_->composition.backBufferStates.size() > backBufferIndex)
+            {
+                impl_->composition.backBufferStates[backBufferIndex] = D3D12_RESOURCE_STATE_PRESENT;
+            }
         }
 
         if (!impl_->executeCommandList(e))
         {
             return false;
         }
+        ++impl_->deviceStats.submissions;
+        ++impl_->deviceStats.commandLists;
+        impl_->recordCompositionRenderCadence();
 
-        const HRESULT presentHr = impl_->composition.swapChain->Present(0, 0);
+        if (!presentThisFrame)
+        {
+            return true;
+        }
+
+        // DirectComposition is sampled by DWM at the display cadence. Never let
+        // a full compositor queue stall the simulation/input thread; keep the
+        // newest app-owned backbuffer and drop this redundant present request.
+        const HRESULT presentHr = impl_->composition.swapChain->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
+        if (presentHr == DXGI_ERROR_WAS_STILL_DRAWING)
+        {
+            ++impl_->gpuStats.compositionPresentSkips;
+            return true;
+        }
         if (FAILED(presentHr))
         {
             if (e) { *e = Hr("composition swapchain Present", presentHr); }
             return false;
         }
 
-        const HRESULT commitHr = impl_->composition.dcompDevice->Commit();
-        if (FAILED(commitHr))
-        {
-            if (e) { *e = Hr("composition Commit", commitHr); }
-            return false;
-        }
-
-        ++impl_->deviceStats.submissions;
-        ++impl_->deviceStats.commandLists;
         ++impl_->gpuStats.compositionFrames;
         ++impl_->gpuStats.zeroCopyFrames;
         ++impl_->gpuStats.gpuCompositedFrames;
         ++impl_->gpuStats.combinedGpuCompositionFrames;
+        impl_->recordCompositionPresentCadence();
         return true;
     }
 
@@ -2706,6 +3259,16 @@ float4 PSMain(VSOut input) : SV_Target0
         }
 
         return impl_->presentComposition(source, static_cast<HWND>(hwnd), left, top, extent, e);
+    }
+
+    bool Dx12Device::setCompositionOverlay(void* content, float left, float top, Extent2D extent, std::string* e)
+    {
+        if (!impl_ || !impl_->isInitialized)
+        {
+            if (e) { *e = "DX12 composition overlay before initialize."; }
+            return false;
+        }
+        return impl_->setCompositionOverlay(static_cast<IUnknown*>(content), left, top, extent, e);
     }
 
     void Dx12Device::resetCompositionHost()
@@ -2765,6 +3328,11 @@ float4 PSMain(VSOut input) : SV_Target0
         }
         auto* native = impl_->native(texture);
         return native && native->resource ? native->resource.Get() : nullptr;
+    }
+
+    std::wstring Dx12Device::adapterName() const
+    {
+        return impl_ ? std::wstring(impl_->adapterDesc.Description) : std::wstring{};
     }
 
     bool Dx12Device::gpuSmokeTest(std::string* e)
@@ -2909,6 +3477,11 @@ namespace am::renderer::rhi
     bool Dx12Device::submit(SubmitInfo, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
     bool Dx12Device::endFrame(std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
     void Dx12Device::waitIdle() {}
+    bool Dx12Device::destroy(Buffer, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
+    bool Dx12Device::destroy(Texture, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
+    bool Dx12Device::destroy(Sampler, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
+    bool Dx12Device::destroy(Shader, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
+    bool Dx12Device::destroy(Pipeline, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
     Registry& Dx12Device::resources() { static Registry r; return r; }
     const Registry& Dx12Device::resources() const { static Registry r; return r; }
     Stats Dx12Device::stats() const { return {}; }
@@ -2924,12 +3497,14 @@ namespace am::renderer::rhi
     bool Dx12Device::submitAndReadbackBgra8(SubmitInfo, Texture, std::vector<U32>*, Extent2D*, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
     bool Dx12Device::submitAndPresentBgra8ToComposition(SubmitInfo, Texture, void*, float, float, Extent2D, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
     bool Dx12Device::presentBgra8ToComposition(Texture, void*, float, float, Extent2D, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
+    bool Dx12Device::setCompositionOverlay(void*, float, float, Extent2D, std::string* e) { if (e) { *e = "DX12 RHI is only available on Windows."; } return false; }
     void Dx12Device::resetCompositionHost() {}
     void Dx12Device::noteGpuViewportComposition(U64) {}
     void Dx12Device::noteD2DTextureBridgeFrame() {}
     void* Dx12Device::nativeD3D12Device() const { return nullptr; }
     void* Dx12Device::nativeD3D12GraphicsQueue() const { return nullptr; }
     void* Dx12Device::nativeD3D12TextureResource(Texture) { return nullptr; }
+    std::wstring Dx12Device::adapterName() const { return {}; }
     Dx12GpuAllocationStats Dx12Device::gpuStats() const { return {}; }
 
     bool Dx12RuntimeAvailable() { return false; }

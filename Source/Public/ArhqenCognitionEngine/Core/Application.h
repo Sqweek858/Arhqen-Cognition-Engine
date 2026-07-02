@@ -43,6 +43,8 @@ namespace am::core
         am::ui::AceShellUi shellUi_;
 
         bool rendererEnabled_ = false;
+        int runtimeSleepMilliseconds_ = 0;
+        int runtimeIdleWaitMilliseconds_ = 8;
         int maxFrames_ = 0;
         bool loggerReady_ = false;
         bool exitRequested_ = false;

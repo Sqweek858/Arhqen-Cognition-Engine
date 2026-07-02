@@ -18,27 +18,30 @@ namespace am::ui
     {
         ++stats_.plans;
         AceD2DPresentPlan plan{};
-        plan.mode = AceD2DPresentSchedulerMode::FullFrameFlipSequential;
+        const bool dirtyPresent = !input.fullFrameRedraw && !input.liveResize && !input.requestedDirtyRect.empty();
+        plan.mode = dirtyPresent
+            ? AceD2DPresentSchedulerMode::DirtyRectPresent1
+            : AceD2DPresentSchedulerMode::FullFrameFlipSequential;
         plan.callPresent = input.hasSwapChain && !input.deviceLost;
-        plan.usePresent1DirtyRects = false;
+        plan.usePresent1DirtyRects = dirtyPresent;
         plan.waitForVsync = true;
-        plan.discardRetainedContentsAssumption = true;
+        plan.discardRetainedContentsAssumption = !dirtyPresent;
         plan.allowTearing = false;
         plan.syncInterval = 1;
         plan.flags = 0;
-        plan.presentRect = input.frameRect;
+        plan.presentRect = dirtyPresent ? input.requestedDirtyRect : input.frameRect;
         plan.resizeSafeFrame = input.resizeEpoch != lastResizeEpoch_ || input.liveResize;
 
         std::ostringstream reason;
-        reason << "present_full_frame_flip"
+        reason << (dirtyPresent ? "present1_dirty_rect" : "present_full_frame_flip")
             << ";swapchain=" << (input.hasSwapChain ? "true" : "false")
             << ";full_frame=" << (input.fullFrameRedraw ? "true" : "false")
-            << ";dirty_present=false"
-            << ";retained_contents=false"
+            << ";dirty_present=" << (dirtyPresent ? "true" : "false")
+            << ";retained_contents=" << (dirtyPresent ? "true" : "false")
             << ";viewport=" << (input.viewportActive ? "true" : "false")
             << ";resize_safe=" << (plan.resizeSafeFrame ? "true" : "false")
             << ";frame=" << input.frameNumber;
-        if (!input.fullFrameRedraw)
+        if (!input.fullFrameRedraw && !dirtyPresent)
         {
             ++stats_.dirtyRectRejected;
             reason << ";partial_request_rejected=1";
@@ -121,7 +124,7 @@ namespace am::ui
         {
         case AceD2DPresentSchedulerMode::FullFrameFlipSequential: return "full_frame_flip_sequential";
         case AceD2DPresentSchedulerMode::FullFrameFlipDiscard: return "full_frame_flip_discard";
-        case AceD2DPresentSchedulerMode::DirtyRectPresent1Reserved: return "dirty_rect_present1_reserved";
+        case AceD2DPresentSchedulerMode::DirtyRectPresent1: return "dirty_rect_present1";
         case AceD2DPresentSchedulerMode::LegacyRetainedContentsForbidden: return "legacy_retained_contents_forbidden";
         default: return "unknown";
         }

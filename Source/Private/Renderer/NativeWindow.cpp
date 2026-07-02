@@ -85,7 +85,9 @@ namespace am::renderer
 
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(WNDCLASSEXW);
-        wc.style = 0; // ACE-AQ3D7: no class-level full-window resize invalidation.
+        // Double-click messages are used by the DirectWrite log selection model.
+        // Deliberately omit CS_HREDRAW/CS_VREDRAW: resize invalidation stays explicit.
+        wc.style = CS_DBLCLKS;
         wc.lpfnWndProc = &NativeWindow::windowProc;
         wc.hInstance = instance_;
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);

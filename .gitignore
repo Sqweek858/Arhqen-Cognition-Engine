@@ -10,3 +10,17 @@ Build/
 *.ilk
 *.exe
 *.log
+*.dmp
+*.tmp
+*.temp
+*.bak
+*.cache
+*.userprefs
+.cache/
+bin/
+obj/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json

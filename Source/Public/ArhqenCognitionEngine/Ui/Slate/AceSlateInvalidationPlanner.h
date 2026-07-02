@@ -49,6 +49,7 @@ namespace am::ui::slate
         bool animationActive = false;
         bool textSelectionActive = false;
         bool diagnosticsVisible = false;
+        bool retainedPartialPaintSafe = false;
         std::uint64_t invalidationSerial = 0;
         std::uint64_t resizeEpoch = 0;
         std::uint64_t viewportResourceEpoch = 0;
@@ -68,6 +69,8 @@ namespace am::ui::slate
         std::uint64_t resizeEpoch = 0;
         std::uint64_t viewportEpoch = 0;
         std::uint64_t invalidationSerial = 0;
+        bool overlayVisible = false;
+        bool viewportActive = false;
         std::string diagnostics;
     };
 

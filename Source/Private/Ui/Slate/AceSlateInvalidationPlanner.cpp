@@ -35,13 +35,15 @@ namespace am::ui::slate
         plan.resizeEpoch = input.resizeEpoch;
         plan.viewportEpoch = input.viewportResourceEpoch;
         plan.invalidationSerial = input.invalidationSerial;
+        plan.overlayVisible = input.overlayVisible;
+        plan.viewportActive = input.viewportActive;
         plan.fullFrame = true;
         plan.rejectPartialPaint = true;
         plan.allowRetainedContents = false;
         plan.allowDirtyRectPresent = false;
         plan.forceViewportRedraw = input.viewportActive;
 
-        if (input.flipSwapChain && input.deviceContextTarget)
+        if (input.flipSwapChain && input.deviceContextTarget && !input.retainedPartialPaintSafe)
         {
             plan.reasons |= AceSlateInvalidationReason::FullFrameFlipSwapChain;
         }
@@ -78,7 +80,16 @@ namespace am::ui::slate
             plan.reasons |= AceSlateInvalidationReason::ForceDebug;
         }
 
-        if (!input.flipSwapChain && !input.deviceContextTarget && !input.viewportActive && !input.liveResize)
+        if (input.retainedPartialPaintSafe && !input.liveResize)
+        {
+            const UiRect dirty = input.osDirtyRect.empty() ? input.windowRect : ClampRectToWindow(input.osDirtyRect, input.windowRect);
+            plan.fullFrame = false;
+            plan.rejectPartialPaint = false;
+            plan.allowRetainedContents = true;
+            plan.allowDirtyRectPresent = input.flipSwapChain;
+            plan.paintRect = dirty.empty() ? input.windowRect : dirty;
+        }
+        else if (!input.flipSwapChain && !input.deviceContextTarget && !input.viewportActive && !input.liveResize)
         {
             const UiRect dirty = input.osDirtyRect.empty() ? input.windowRect : ClampRectToWindow(input.osDirtyRect, input.windowRect);
             plan.fullFrame = false;
@@ -103,6 +114,8 @@ namespace am::ui::slate
         lastInvalidationSerial_ = plan.invalidationSerial;
         lastResizeEpoch_ = plan.resizeEpoch;
         lastViewportEpoch_ = plan.viewportEpoch;
+        lastOverlayVisible_ = plan.overlayVisible;
+        lastViewportActive_ = plan.viewportActive;
         lastPresentHr_ = presentHr;
         AceSlateInvalidationHistoryEntry entry{};
         entry.frameNumber = history_.empty() ? 1 : history_.back().frameNumber + 1;

@@ -14,6 +14,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace am::ui
@@ -183,7 +184,6 @@ namespace am::ui
             out.frameMsMin = last.frameMs;
             out.frameMsMax = last.frameMs;
             double totalFrameMs = 0.0;
-            double totalFps = 0.0;
             out.fpsMin = 1000000.0;
             out.fpsMax = 0.0;
 
@@ -193,7 +193,6 @@ namespace am::ui
                 const double frameMs = s.frameMs > 0.0001 ? s.frameMs : 0.0001;
                 const double fps = 1000.0 / frameMs;
                 totalFrameMs += s.frameMs;
-                totalFps += fps;
                 out.frameMsMin = std::min(out.frameMsMin, s.frameMs);
                 out.frameMsMax = std::max(out.frameMsMax, s.frameMs);
                 out.fpsMin = std::min(out.fpsMin, fps);
@@ -201,7 +200,7 @@ namespace am::ui
             }
 
             out.frameMsAvg = totalFrameMs / static_cast<double>(count_);
-            out.fpsAvg = totalFps / static_cast<double>(count_);
+            out.fpsAvg = out.frameMsAvg > 0.0001 ? 1000.0 / out.frameMsAvg : 0.0;
             out.fpsLast = last.frameMs > 0.0001 ? 1000.0 / last.frameMs : 0.0;
             out.uiMsLast = last.uiMs;
             out.layoutMsLast = last.layoutMs;
@@ -222,9 +221,20 @@ namespace am::ui
         AceEngineRenderPath lastFallbackPath_ = AceEngineRenderPath::Unknown;
     };
 
+    inline std::filesystem::path& AceEngineLogPathStorage()
+    {
+        static std::filesystem::path path = std::filesystem::path("Build") / "Logs" / "ace_engine.log";
+        return path;
+    }
+
+    inline void AceEngineSetLogPath(std::filesystem::path path)
+    {
+        AceEngineLogPathStorage() = std::move(path);
+    }
+
     inline std::filesystem::path AceEngineLogPath()
     {
-        return std::filesystem::path("Build") / "Logs" / "ace_engine.log";
+        return AceEngineLogPathStorage();
     }
 
     inline std::string AceEngineTimestamp()

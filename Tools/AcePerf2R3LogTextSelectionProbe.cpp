@@ -38,6 +38,10 @@ int main()
     ok &= Check("perf2r3_ctrl_c_prefers_log_selection", Has(shellCpp, "keyboard.ctrl && wParam == 'C'") && Has(shellCpp, "engineLogHasTextSelection() && copyEngineLogTextSelectionToClipboard()"));
     ok &= Check("perf2r3_ctrl_a_select_all_log", Has(shellCpp, "keyboard.ctrl && wParam == 'A'") && Has(shellCpp, "selectAllEngineLogText()"));
     ok &= Check("perf2r3_drag_selection", Has(shellCpp, "engineLogTextSelecting_ = true") && Has(shellCpp, "engineLogSelectionActive_ = hitTestEngineLogText(x, y)"));
+    ok &= Check("perf2r3_drag_autoscroll_lmb_lifetime", Has(shellCpp, "bool leftButtonDown") && Has(shellCpp, "Autoscroll must never outlive drag"));
+    ok &= Check("perf2r3_scrollbar_drag_released", Has(shellCpp, "aquariumDraggingScroll_ == &engineLogOverlayScroll_") && Has(shellCpp, "endAquariumScrollbarDrag()"));
+    ok &= Check("perf2r3_double_triple_click", Has(shellCpp, "WM_LBUTTONDBLCLK") && Has(shellCpp, "Double click selects one word") && Has(shellCpp, "Triple click selects the complete visual log row"));
+    ok &= Check("perf2r3_lazy_line_layout_cache", Has(shellHeader, "engineLogOverlayLineLayouts_") && Has(shellCpp, "engineLogTextLayoutForLine"));
     ok &= Check("perf2r3_d2d_selection_highlight", Has(shellCpp, "renderEngineLogTextSelection") && Has(shellCpp, "FillRectangle(highlight.d2d()"));
     ok &= Check("perf2r3_single_selection_tint", Has(shellCpp, "PERF2R3.2") && Has(shellCpp, "SetOpacity(0.36f)") && !Has(shellCpp, "rowBand") && !Has(shellCpp, "SetOpacity(0.16f)") && !Has(shellCpp, "SetOpacity(0.48f)"));
     ok &= Check("perf2r3_ibeam_cursor", Has(shellCpp, "engineLogOverlayLogViewportRect_.contains(x, y)") && Has(shellCpp, "IDC_IBEAM"));

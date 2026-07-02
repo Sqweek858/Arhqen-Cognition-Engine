@@ -167,6 +167,16 @@ namespace am::ui::slate
         return policy;
     }
 
+    AceSlateFramePolicy AceSlateFramePolicy::FlipModelDirtyRect(std::uint32_t width, std::uint32_t height)
+    {
+        AceSlateFramePolicy policy = FlipModelFullFrame(width, height);
+        policy.allowDirtyRectPresentation = true;
+        policy.forceFullFrameRedraw = false;
+        policy.allowRetainedContentsAssumption = true;
+        policy.clearOutputEveryFrame = false;
+        return policy;
+    }
+
     bool AceSlateFramePolicy::IsFullFrameRequired() const
     {
         if (forceFullFrameRedraw) { return true; }

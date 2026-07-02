@@ -107,11 +107,15 @@ namespace am::ui
         void setSuggestionProvider(SuggestionProvider provider);
         void setInspectorProvider(InspectorProvider provider);
         void setLayoutProfilePath(std::filesystem::path path);
+        void setVsyncEnabled(bool enabled);
+        void setRuntimeFrameDeltaSeconds(double deltaSeconds);
+        void flushPendingPaint();
         bool create(HWND parent, int width, int height, std::string* error);
         void layout(int width, int height);
         LRESULT handleWindowMessage(UINT message, WPARAM wParam, LPARAM lParam, bool* handled);
 
         bool created() const;
+        bool wantsUnthrottledTick() const;
         void tick(float dtSeconds);
 
     private:
@@ -147,6 +151,7 @@ namespace am::ui
         void renderAquariumDx12ViewportSurface(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled);
         void renderAquariumResizeProxyViewport(D2DRenderContext& ctx, UiRect rect);
         void renderAquariumSlateCompositeViewport(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled);
+        bool renderAquariumDirectCompositionFrame(std::string* error);
         am::renderer::scene::AceAquariumGpuViewportOverlay buildAquariumGpuViewportOverlay(UiRect viewportSurface, const ace::aquarium_ui::AceAquariumUiSnapshot& snapshot) const;
         void syncAquariumEmbeddedViewportWindow();
         void renderAquariumButton(D2DRenderContext& ctx, UiRect rect, const std::wstring& label, bool active = false);
@@ -192,6 +197,9 @@ namespace am::ui
         bool shouldAquariumViewportInputDeferToOverlay(float x, float y) const;
         bool beginAquariumSingleHwndMouseLook(float x, float y, const char* reason);
         bool updateAquariumSingleHwndMouseLook(float x, float y, const char* reason);
+        bool registerAquariumRawMouseInput();
+        void unregisterAquariumRawMouseInput();
+        bool consumeAquariumRawMouseDelta();
         bool endAquariumSingleHwndMouseLook(const char* reason);
         void cancelAquariumSingleHwndMouseLook(const char* reason);
         std::string aquariumViewportInputDiagnostics() const;
@@ -226,9 +234,9 @@ namespace am::ui
         void toggleEngineLogOverlay();
         void refreshEngineLogOverlayLines();
         bool submitEngineLogOverlayInput();
-        bool handleEngineLogOverlayMouseDown(D2DRenderContext& ctx, float x, float y);
+        bool handleEngineLogOverlayMouseDown(D2DRenderContext& ctx, float x, float y, unsigned clickCount);
         bool handleEngineLogOverlayMouseUp(D2DRenderContext& ctx, float x, float y);
-        bool handleEngineLogOverlayMouseMove(D2DRenderContext& ctx, float x, float y);
+        bool handleEngineLogOverlayMouseMove(D2DRenderContext& ctx, float x, float y, bool leftButtonDown);
         bool handleEngineLogOverlayWheel(D2DRenderContext& ctx, float x, float y, int wheelDelta);
         bool handleEngineLogOverlayChar(WPARAM wParam);
         bool handleEngineLogOverlayKeyDown(WPARAM wParam, const D2DKeyboardState& keyboard);
@@ -239,6 +247,7 @@ namespace am::ui
             bool valid = false;
         };
         EngineLogTextPosition hitTestEngineLogText(float x, float y) const;
+        Microsoft::WRL::ComPtr<IDWriteTextLayout> engineLogTextLayoutForLine(std::size_t line) const;
         bool engineLogHasTextSelection() const;
         std::wstring selectedEngineLogText() const;
         void clearEngineLogTextSelection();
@@ -253,6 +262,9 @@ namespace am::ui
         bool isViewportLocalOverlayActive() const;
         void requestParentCompositedViewportHold(std::uint32_t frames, const wchar_t* reason);
         bool shouldUseDirectCompositionForAquariumViewport() const;
+        bool renderAquariumD2DCompositionHud(const ace::aquarium_ui::AceAquariumUiSnapshot& snapshot, std::string* error);
+        bool ensureAquariumD2DCompositionHud(UiRect hudRect, std::string* error);
+        void resetAquariumD2DCompositionHud();
         void resetAquariumDirectCompositionIfActive();
         struct AquariumViewportCacheKey
         {
@@ -351,6 +363,7 @@ namespace am::ui
         std::uint64_t aceUi9DebugOverlayToggleCount_ = 0;
         bool engineLogOverlayVisible_ = false;
         std::vector<std::wstring> engineLogOverlayLines_;
+        mutable std::vector<Microsoft::WRL::ComPtr<IDWriteTextLayout>> engineLogOverlayLineLayouts_;
         UiRect engineLogOverlayRect_{};
         UiRect engineLogOverlayLogViewportRect_{};
         UiRect engineLogOverlayInputRect_{};
@@ -361,6 +374,10 @@ namespace am::ui
         bool engineLogTextSelecting_ = false;
         EngineLogTextPosition engineLogSelectionAnchor_{};
         EngineLogTextPosition engineLogSelectionActive_{};
+        std::uint32_t engineLogLastClickTime_ = 0;
+        float engineLogLastClickX_ = 0.0f;
+        float engineLogLastClickY_ = 0.0f;
+        unsigned engineLogClickCount_ = 0;
         std::uint64_t engineLogOverlayToggleCount_ = 0;
         bool engineLogOverlaySuppressNextBacktickChar_ = false;
         float uiDpiScale_ = 1.0f;
@@ -386,6 +403,11 @@ namespace am::ui
         bool aquariumSingleHwndMouseCaptured_ = false;
         float aquariumSingleHwndLastMouseX_ = 0.0f;
         float aquariumSingleHwndLastMouseY_ = 0.0f;
+        bool aquariumRawMouseRegistered_ = false;
+        LONG aquariumPendingRawMouseX_ = 0;
+        LONG aquariumPendingRawMouseY_ = 0;
+        std::uint64_t aquariumRawMousePacketCount_ = 0;
+        std::uint64_t aquariumRawMouseConsumeCount_ = 0;
         std::uint64_t aquariumViewportInputRmbDownCount_ = 0;
         std::uint64_t aquariumViewportInputRmbUpCount_ = 0;
         std::uint64_t aquariumViewportInputBeginCount_ = 0;
@@ -484,6 +506,17 @@ namespace am::ui
         std::string aquariumD2DBridgeFatalHresult_;
         bool aquariumD2DBridgeDisabled_ = false;
         bool aquariumDirectCompositionActive_ = false;
+        Microsoft::WRL::ComPtr<IDXGISwapChain1> aquariumD2DCompositionHudSwapChain_{};
+        Microsoft::WRL::ComPtr<ID2D1Bitmap1> aquariumD2DCompositionHudTarget_{};
+        am::renderer::rhi::Extent2D aquariumD2DCompositionHudExtent_{};
+        UiRect aquariumD2DCompositionHudRect_{};
+        bool aquariumD2DCompositionHudAttached_ = false;
+        bool aquariumD2DCompositionHudCacheValid_ = false;
+        double aquariumD2DCompositionHudHydration_ = 0.0;
+        double aquariumD2DCompositionHudNutrition_ = 0.0;
+        double aquariumD2DCompositionHudIntegrity_ = 0.0;
+        std::uint64_t aquariumD2DCompositionHudDrawCount_ = 0;
+        std::uint64_t aquariumD2DCompositionHudPresentCount_ = 0;
         bool aquariumResetDirectCompositionAfterPaint_ = false;
         bool aquariumViewportLocalOverlayActiveLastFrame_ = false;
         std::uint32_t aquariumParentCompositedHoldFrames_ = 0;
@@ -675,6 +708,8 @@ namespace am::ui
         slate::AceSlatePaintJournal slatePaintJournal_{32};
         slate::AceSlateViewportElementBuilder slateViewportElementBuilder_{};
         std::uint64_t d2dFrameInvalidationSerial_ = 0;
+        double runtimeFrameDeltaSeconds_ = 0.0;
+        bool uiVsyncEnabled_ = false;
 
         Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> textBrush_;
         Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> textDimBrush_;

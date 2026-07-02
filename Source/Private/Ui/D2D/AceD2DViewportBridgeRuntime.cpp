@@ -65,7 +65,16 @@ namespace am::ui
         decision.lastGoodSlot = lastGood;
         decision.firstFrame = !lastGood.has_value();
         decision.writeSlot = PickWriteSlot(input.frameNumber, input.resourceEpoch, lastGood);
-        if (lastGood.has_value())
+        if (decision.keyedMutex)
+        {
+            // The writer releases key 1 after CopyResource and D2D acquires key 1
+            // before drawing. That is an explicit same-frame handoff; reporting or
+            // scheduling the previous slot adds phantom latency and contradicts the
+            // actual bridge draw path.
+            decision.drawSlot = decision.writeSlot;
+            decision.drawLastGood = false;
+        }
+        else if (lastGood.has_value())
         {
             decision.drawSlot = *lastGood;
             decision.drawLastGood = true;

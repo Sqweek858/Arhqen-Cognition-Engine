@@ -59,16 +59,20 @@ namespace ace::aquarium_render
         float MoveSpeed() const { return moveSpeed_; }
         float MouseSensitivity() const { return mouseSensitivity_; }
 
-        void SetPosition(AceAqVec3 position) { position_ = position; }
+        void SetPosition(AceAqVec3 position);
         void SetYawPitch(float yawRadians, float pitchRadians);
 
         static AceAqVec3 WorldUp();
 
     private:
         AceAqVec3 position_{};
+        AceAqVec3 movementVelocity_{};
         float yaw_ = 0.0f;
         float pitch_ = 0.0f;
         float moveSpeed_ = 5.25f;
+        float movementAcceleration_ = 115.0f;
+        float movementDamping_ = 18.0f;
+        float movementBrakingDamping_ = 35.0f;
         float mouseSensitivity_ = 0.0035f;
         float fovYRadians_ = 1.0471975512f;
         float nearPlane_ = 0.05f;

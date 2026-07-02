@@ -91,9 +91,13 @@ namespace am::renderer::rhi
         bool destroy(Pipeline h, std::string* e=nullptr);
         const BufferDesc* desc(Buffer h) const;
         const TextureDesc* desc(Texture h) const;
+        const SamplerDesc* desc(Sampler h) const;
+        const ShaderDesc* desc(Shader h) const;
         const GraphicsPipelineDesc* desc(Pipeline h) const;
         bool exists(Buffer h) const { return desc(h)!=nullptr; }
         bool exists(Texture h) const { return desc(h)!=nullptr; }
+        bool exists(Sampler h) const { return desc(h)!=nullptr; }
+        bool exists(Shader h) const { return desc(h)!=nullptr; }
         bool exists(Pipeline h) const { return desc(h)!=nullptr; }
         bool setAccess(Buffer h, Access a, std::string* e=nullptr);
         bool setAccess(Texture h, Access a, std::string* e=nullptr);
@@ -179,6 +183,11 @@ namespace am::renderer::rhi
         virtual bool submit(SubmitInfo info, std::string* e)=0;
         virtual bool endFrame(std::string* e)=0;
         virtual void waitIdle()=0;
+        virtual bool destroy(Buffer h, std::string* e=nullptr)=0;
+        virtual bool destroy(Texture h, std::string* e=nullptr)=0;
+        virtual bool destroy(Sampler h, std::string* e=nullptr)=0;
+        virtual bool destroy(Shader h, std::string* e=nullptr)=0;
+        virtual bool destroy(Pipeline h, std::string* e=nullptr)=0;
         virtual Registry& resources()=0;
         virtual const Registry& resources() const=0;
         virtual Stats stats() const=0;
@@ -195,6 +204,11 @@ namespace am::renderer::rhi
         bool submit(SubmitInfo info, std::string* e) override;
         bool endFrame(std::string* e) override;
         void waitIdle() override {}
+        bool destroy(Buffer h, std::string* e=nullptr) override { return registry_.destroy(h, e); }
+        bool destroy(Texture h, std::string* e=nullptr) override { return registry_.destroy(h, e); }
+        bool destroy(Sampler h, std::string* e=nullptr) override { return registry_.destroy(h, e); }
+        bool destroy(Shader h, std::string* e=nullptr) override { return registry_.destroy(h, e); }
+        bool destroy(Pipeline h, std::string* e=nullptr) override { return registry_.destroy(h, e); }
         Registry& resources() override { return registry_; }
         const Registry& resources() const override { return registry_; }
         Stats stats() const override;

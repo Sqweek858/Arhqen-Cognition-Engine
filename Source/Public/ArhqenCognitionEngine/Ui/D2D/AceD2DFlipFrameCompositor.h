@@ -27,6 +27,7 @@ namespace am::ui
         bool liveResize = false;
         bool diagnosticsVisible = false;
         bool overlayVisible = false;
+        bool retainedPartialRedrawSafe = false;
         std::uint64_t invalidationSerial = 0;
         std::uint64_t viewportResourceEpoch = 0;
     };

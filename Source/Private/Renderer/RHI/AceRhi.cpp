@@ -17,7 +17,7 @@ namespace am::renderer::rhi
 
     Registry::Registry(){reset();}
     void Registry::reset(){buffers_.assign(1,{});textures_.assign(1,{});samplers_.assign(1,{});shaders_.assign(1,{});pipelines_.assign(1,{});stats_={};}
-    template<class T> Handle Registry::alloc(std::vector<Slot<T>>& s,T d,Access a){U32 idx=static_cast<U32>(s.size());s.push_back({});auto& slot=s.back();slot.desc=std::move(d);slot.access=a;slot.alive=true;slot.generation=1;return{idx,slot.generation};}
+    template<class T> Handle Registry::alloc(std::vector<Slot<T>>& s,T d,Access a){U32 idx=0;for(U32 i=1;i<static_cast<U32>(s.size());++i){if(!s[i].alive){idx=i;break;}}if(idx==0){idx=static_cast<U32>(s.size());s.push_back({});}auto& slot=s[idx];slot.desc=std::move(d);slot.access=a;slot.alive=true;slot.generation=slot.generation==0?1:slot.generation+1;if(slot.generation==0)slot.generation=1;return{idx,slot.generation};}
     template<class T> typename Registry::Slot<T>* Registry::get(std::vector<Slot<T>>& s,Handle h){if(!h.valid()||h.index>=s.size())return nullptr;auto& slot=s[h.index];return slot.alive&&slot.generation==h.generation?&slot:nullptr;}
     template<class T> const typename Registry::Slot<T>* Registry::get(const std::vector<Slot<T>>& s,Handle h) const{if(!h.valid()||h.index>=s.size())return nullptr;auto& slot=s[h.index];return slot.alive&&slot.generation==h.generation?&slot:nullptr;}
     template<class T> bool Registry::release(std::vector<Slot<T>>& s,Handle h,std::string* e){auto* slot=get(s,h);if(!slot){if(e)*e="invalid or stale RHI handle";++stats_.validationErrors;return false;}slot->alive=false;return true;}
@@ -25,7 +25,7 @@ namespace am::renderer::rhi
     Texture Registry::create(TextureDesc d,std::string* e){if(!Validate(d,e)){++stats_.validationErrors;return{};}++stats_.createdTextures;Access a=Has(d.usage,Usage::Present)?Access::Present:Access::Common;return{alloc(textures_,std::move(d),a)};}
     Sampler Registry::create(SamplerDesc d,std::string*){return{alloc(samplers_,std::move(d),Access::Common)};}
     Shader Registry::create(ShaderDesc d,std::string* e){if(d.stage==ShaderStage::None){if(e)*e="shader stage required";++stats_.validationErrors;return{};}return{alloc(shaders_,std::move(d),Access::Common)};}
-    Pipeline Registry::create(GraphicsPipelineDesc d,std::string* e){if(!Validate(d,e)){++stats_.validationErrors;return{};}++stats_.createdPipelines;return{alloc(pipelines_,std::move(d),Access::Common)};}
+    Pipeline Registry::create(GraphicsPipelineDesc d,std::string* e){if(!Validate(d,e)){++stats_.validationErrors;return{};}const auto*vs=desc(d.vs);if(!vs||vs->stage!=ShaderStage::Vertex){if(e)*e="pipeline vertex shader handle/stage invalid";++stats_.validationErrors;return{};}if(d.ps.valid()){const auto*ps=desc(d.ps);if(!ps||ps->stage!=ShaderStage::Pixel){if(e)*e="pipeline pixel shader handle/stage invalid";++stats_.validationErrors;return{};}}++stats_.createdPipelines;return{alloc(pipelines_,std::move(d),Access::Common)};}
     bool Registry::destroy(Buffer h,std::string* e){if(release(buffers_,h.h,e)){++stats_.destroyedBuffers;return true;}return false;}
     bool Registry::destroy(Texture h,std::string* e){if(release(textures_,h.h,e)){++stats_.destroyedTextures;return true;}return false;}
     bool Registry::destroy(Sampler h,std::string* e){return release(samplers_,h.h,e);}
@@ -33,6 +33,8 @@ namespace am::renderer::rhi
     bool Registry::destroy(Pipeline h,std::string* e){if(release(pipelines_,h.h,e)){++stats_.destroyedPipelines;return true;}return false;}
     const BufferDesc* Registry::desc(Buffer h)const{auto* s=get(buffers_,h.h);return s?&s->desc:nullptr;}
     const TextureDesc* Registry::desc(Texture h)const{auto* s=get(textures_,h.h);return s?&s->desc:nullptr;}
+    const SamplerDesc* Registry::desc(Sampler h)const{auto* s=get(samplers_,h.h);return s?&s->desc:nullptr;}
+    const ShaderDesc* Registry::desc(Shader h)const{auto* s=get(shaders_,h.h);return s?&s->desc:nullptr;}
     const GraphicsPipelineDesc* Registry::desc(Pipeline h)const{auto* s=get(pipelines_,h.h);return s?&s->desc:nullptr;}
     bool Registry::setAccess(Buffer h,Access a,std::string* e){auto* s=get(buffers_,h.h);if(!s){if(e)*e="invalid buffer";++stats_.validationErrors;return false;}s->access=a;return true;}
     bool Registry::setAccess(Texture h,Access a,std::string* e){auto* s=get(textures_,h.h);if(!s){if(e)*e="invalid texture";++stats_.validationErrors;return false;}s->access=a;return true;}
@@ -60,7 +62,7 @@ namespace am::renderer::rhi
     void CommandList::drawIndexed(U32 i,U32 inst,U32 first,int vo,U32 fi){++drawCalls_;commands_.push_back(CmdDrawIndexed{i,inst,first,vo,fi});}
     void CommandList::dispatch(U32 x,U32 y,U32 z){commands_.push_back(CmdDispatch{x,y,z});}
     void CommandList::copy(Buffer s,Buffer d,U64 so,U64 doff,U64 sz){commands_.push_back(CmdCopyBuffer{s,d,so,doff,sz});}
-    bool CommandList::validate(const Registry& r,std::string* e)const{bool inPass=false,pipe=false;for(auto&c:commands_){if(auto*p=std::get_if<CmdBeginPass>(&c)){if(inPass){if(e)*e="nested pass";return false;}if(p->desc.colors.empty()&&!p->desc.depth){if(e)*e="render pass missing attachments";return false;}for(auto&a:p->desc.colors)if(!r.exists(a.texture)){if(e)*e="invalid color attachment";return false;}if(p->desc.depth&&!r.exists(p->desc.depth->texture)){if(e)*e="invalid depth attachment";return false;}inPass=true;pipe=false;continue;}if(std::holds_alternative<CmdEndPass>(c)){if(!inPass){if(e)*e="end without begin";return false;}inPass=false;continue;}if(auto*p=std::get_if<CmdPipeline>(&c)){if(!r.exists(p->pipeline)){if(e)*e="invalid pipeline";return false;}pipe=true;continue;}if(auto*p=std::get_if<CmdVertexBuffer>(&c)){if(!r.exists(p->buffer)){if(e)*e="invalid vertex buffer";return false;}continue;}if(auto*p=std::get_if<CmdIndexBuffer>(&c)){if(!r.exists(p->buffer)){if(e)*e="invalid index buffer";return false;}continue;}if(auto*p=std::get_if<CmdDraw>(&c)){if(!inPass||!pipe||p->vertices==0){if(e)*e="invalid draw";return false;}continue;}if(auto*p=std::get_if<CmdDrawIndexed>(&c)){if(!inPass||!pipe||p->indices==0){if(e)*e="invalid draw indexed";return false;}continue;}if(auto*p=std::get_if<CmdCopyBuffer>(&c)){if(!r.exists(p->src)||!r.exists(p->dst)||p->size==0){if(e)*e="invalid copy buffer";return false;}continue;}}if(inPass){if(e)*e="render pass left open";return false;}return true;}
+    bool CommandList::validate(const Registry& r,std::string* e)const{bool inPass=false,pipe=false;for(auto&c:commands_){if(auto*p=std::get_if<CmdBeginPass>(&c)){if(queue_!=Queue::Graphics){if(e)*e="render pass requires graphics queue";return false;}if(inPass){if(e)*e="nested pass";return false;}if(p->desc.colors.empty()&&!p->desc.depth){if(e)*e="render pass missing attachments";return false;}for(auto&a:p->desc.colors)if(!r.exists(a.texture)){if(e)*e="invalid color attachment";return false;}if(p->desc.depth&&!r.exists(p->desc.depth->texture)){if(e)*e="invalid depth attachment";return false;}inPass=true;pipe=false;continue;}if(std::holds_alternative<CmdEndPass>(c)){if(!inPass){if(e)*e="end without begin";return false;}inPass=false;continue;}if(auto*p=std::get_if<CmdPipeline>(&c)){if(!r.exists(p->pipeline)){if(e)*e="invalid pipeline";return false;}pipe=true;continue;}if(auto*p=std::get_if<CmdVertexBuffer>(&c)){if(!r.exists(p->buffer)){if(e)*e="invalid vertex buffer";return false;}continue;}if(auto*p=std::get_if<CmdIndexBuffer>(&c)){if(!r.exists(p->buffer)){if(e)*e="invalid index buffer";return false;}continue;}if(auto*p=std::get_if<CmdDraw>(&c)){if(!inPass||!pipe||p->vertices==0){if(e)*e="invalid draw";return false;}continue;}if(auto*p=std::get_if<CmdDrawIndexed>(&c)){if(!inPass||!pipe||p->indices==0){if(e)*e="invalid draw indexed";return false;}continue;}if(std::holds_alternative<CmdDispatch>(c)){if(e)*e="compute dispatch is unsupported by this RHI backend";return false;}if(auto*p=std::get_if<CmdCopyBuffer>(&c)){if(!r.exists(p->src)||!r.exists(p->dst)||p->size==0){if(e)*e="invalid copy buffer";return false;}continue;}}if(inPass){if(e)*e="render pass left open";return false;}return true;}
 
     bool NullDevice::initialize(DeviceDesc d,std::string* e){if(initialized_){if(e)*e="device already initialized";return false;}if(d.framesInFlight==0){if(e)*e="framesInFlight zero";return false;}desc_=std::move(d);registry_.reset();deviceStats_={};initialized_=true;insideFrame_=false;return true;}
     void NullDevice::shutdown(){registry_.reset();initialized_=false;insideFrame_=false;deviceStats_={};}
@@ -81,6 +83,80 @@ namespace am::renderer::rhi
     void RenderGraph::write(U32 p,RgHandle h,Access a){if(p<passes_.size())passes_[p].uses.push_back({isTex(h)?RgKind::Texture:RgKind::Buffer,h,a,true});}
     bool RenderGraph::isTexture(RgHandle h)const{return isTex(h)&&idx(h)>0&&idx(h)<textures_.size();}
     U32 RenderGraph::decode(RgHandle h)const{return idx(h);}
-    RgCompileResult RenderGraph::compile(Registry& r){RgCompileResult out;for(auto&b:buffers_){if(b.external){if(!r.exists(b.imported)){out.error="invalid imported buffer";return out;}b.realized=b.imported;}else if(b.desc.size){std::string e;b.realized=r.create(b.desc,&e);if(!b.realized.valid()){out.error=e;return out;}++out.transientBuffers;}}for(auto&t:textures_){if(t.external){if(!r.exists(t.imported)){out.error="invalid imported texture";return out;}t.realized=t.imported;}else if(t.desc.format!=Format::Unknown){std::string e;t.realized=r.create(t.desc,&e);if(!t.realized.valid()){out.error=e;return out;}++out.transientTextures;}}std::unordered_map<U32,Access> ba,ta;for(U32 p=0;p<passes_.size();++p){RgCompiledPass cp;cp.pass=p;for(auto&u:passes_[p].uses){U32 i=decode(u.resource);if(u.kind==RgKind::Texture){if(!isTexture(u.resource)){out.error="invalid graph texture";return out;}Access before=ta.count(i)?ta[i]:Access::Common;if(before!=u.access)cp.textures.push_back({textures_[i].realized,before,u.access});ta[i]=u.access;}else{if(i==0||i>=buffers_.size()){out.error="invalid graph buffer";return out;}Access before=ba.count(i)?ba[i]:Access::Common;if(before!=u.access)cp.buffers.push_back({buffers_[i].realized,before,u.access});ba[i]=u.access;}}out.passes.push_back(std::move(cp));}out.ok=true;return out;}
-    bool RenderGraph::execute(IDevice& d,const RgCompileResult& c,std::string* e){if(!c.ok){if(e)*e=c.error;return false;}for(auto&cp:c.passes){if(cp.pass>=passes_.size()){if(e)*e="compiled pass out of range";return false;}auto&p=passes_[cp.pass];CommandList list(p.queue);for(auto&b:cp.buffers)list.barrier(b.buffer,b.before,b.after);for(auto&t:cp.textures)list.barrier(t.texture,t.before,t.after);list.marker(p.name.empty()?"pass":p.name.value,{0.2f,0.7f,1,1});if(p.record)p.record(list);if(!d.submit({p.queue,&list},e))return false;}return true;}
+    RgCompileResult RenderGraph::compile(Registry& r)
+    {
+        RgCompileResult out;
+        auto rollback = [&]()
+        {
+            for(std::size_t i=1;i<buffers_.size();++i){auto& b=buffers_[i];if(!b.external&&b.realized.valid()){r.destroy(b.realized,nullptr);b.realized={};}}
+            for(std::size_t i=1;i<textures_.size();++i){auto& t=textures_[i];if(!t.external&&t.realized.valid()){r.destroy(t.realized,nullptr);t.realized={};}}
+            out.transientBuffers=0;
+            out.transientTextures=0;
+        };
+        auto fail = [&](std::string error)
+        {
+            out.error=std::move(error);
+            rollback();
+            return out;
+        };
+
+        for(auto& b:buffers_)
+        {
+            if(b.external){if(!r.exists(b.imported))return fail("invalid imported buffer");b.realized=b.imported;}
+            else if(b.desc.size){std::string error;b.realized=r.create(b.desc,&error);if(!b.realized.valid())return fail(error);++out.transientBuffers;}
+        }
+        for(auto& t:textures_)
+        {
+            if(t.external){if(!r.exists(t.imported))return fail("invalid imported texture");t.realized=t.imported;}
+            else if(t.desc.format!=Format::Unknown){std::string error;t.realized=r.create(t.desc,&error);if(!t.realized.valid())return fail(error);++out.transientTextures;}
+        }
+
+        std::unordered_map<U32,Access> bufferAccess,textureAccess;
+        for(U32 passIndex=0;passIndex<passes_.size();++passIndex)
+        {
+            RgCompiledPass compiledPass;
+            compiledPass.pass=passIndex;
+            for(const auto& use:passes_[passIndex].uses)
+            {
+                const U32 resourceIndex=decode(use.resource);
+                if(use.kind==RgKind::Texture)
+                {
+                    if(!isTexture(use.resource)||!r.exists(textures_[resourceIndex].realized))return fail("invalid graph texture");
+                    const Access before=textureAccess.count(resourceIndex)?textureAccess[resourceIndex]:Access::Common;
+                    if(before!=use.access)compiledPass.textures.push_back({textures_[resourceIndex].realized,before,use.access});
+                    textureAccess[resourceIndex]=use.access;
+                }
+                else
+                {
+                    if(resourceIndex==0||resourceIndex>=buffers_.size()||!r.exists(buffers_[resourceIndex].realized))return fail("invalid graph buffer");
+                    const Access before=bufferAccess.count(resourceIndex)?bufferAccess[resourceIndex]:Access::Common;
+                    if(before!=use.access)compiledPass.buffers.push_back({buffers_[resourceIndex].realized,before,use.access});
+                    bufferAccess[resourceIndex]=use.access;
+                }
+            }
+            out.passes.push_back(std::move(compiledPass));
+        }
+        out.ok=true;
+        return out;
+    }
+
+    bool RenderGraph::execute(IDevice& d,const RgCompileResult& c,std::string* e)
+    {
+        if(!c.ok){if(e)*e=c.error;return false;}
+        bool ok=true;
+        for(const auto& compiledPass:c.passes)
+        {
+            if(compiledPass.pass>=passes_.size()){if(e)*e="compiled pass out of range";ok=false;break;}
+            auto& pass=passes_[compiledPass.pass];
+            CommandList list(pass.queue);
+            for(const auto& barrier:compiledPass.buffers)list.barrier(barrier.buffer,barrier.before,barrier.after);
+            for(const auto& barrier:compiledPass.textures)list.barrier(barrier.texture,barrier.before,barrier.after);
+            list.marker(pass.name.empty()?"pass":pass.name.value,{0.2f,0.7f,1,1});
+            if(pass.record)pass.record(list);
+            if(!d.submit({pass.queue,&list},e)){ok=false;break;}
+        }
+        for(std::size_t i=1;i<buffers_.size();++i){auto& b=buffers_[i];if(!b.external&&b.realized.valid()){d.destroy(b.realized,nullptr);b.realized={};}}
+        for(std::size_t i=1;i<textures_.size();++i){auto& t=textures_[i];if(!t.external&&t.realized.valid()){d.destroy(t.realized,nullptr);t.realized={};}}
+        return ok;
+    }
 }

@@ -38,7 +38,7 @@ int main()
         contains(shellCpp, "IDXGIKeyedMutex::AcquireSync") &&
         contains(shellCpp, "ReleaseSync"));
     fails += check("vtbridge4r2_keeps_gpu_only_legacy_shared_fallback",
-        contains(shellCpp, "keyed_mutex_fallback=legacy_shared_ring") &&
+        contains(shellCpp, "keyed_mutex_experimental_failed_try_flush_only_ring=1") &&
         contains(shellCpp, "D3D11_RESOURCE_MISC_SHARED") &&
         !contains(shellCpp, "renderGpuViewport(false)"));
     fails += check("vtbridge4r2_ring_copy_and_draw_indices",

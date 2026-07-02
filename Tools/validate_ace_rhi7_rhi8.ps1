@@ -60,10 +60,21 @@ if ($GpuHeader -notlike "*zeroCopyPresented*" -or $GpuCpp -notlike "*presentBgra
 }
 Write-Host "PASS|rhi8_gpu_viewport_zero_copy_handoff_present"
 
-if ($ShellCpp -notlike "*DirectComposition zero-copy*" -or $ShellCpp -notlike "*setWorldToClipMatrix*" -or $ShellCpp -notlike "*parent_*" -or $ShellCpp -notlike "*zeroCopyPresented*") {
+if ($ShellCpp -notlike "*DirectComposition zero-copy*" -or $ShellCpp -notlike "*setWorldToClipMatrix*" -or $ShellCpp -notlike "*parent_*" -or $ShellCpp -notlike "*renderGpuViewport*") {
     throw "Shell does not wire real camera WVP + zero-copy composition."
 }
 Write-Host "PASS|shell_wires_wvp_and_zero_copy_composition"
+
+if ($DxHeader -notlike "*setCompositionOverlay*" -or
+    $Dx12 -notlike "*dcompOverlayVisual*" -or
+    $ShellCpp -notlike "*CreateSwapChainForComposition D2D HUD*" -or
+    $ShellCpp -notlike "*renderAquariumD2DCompositionHud*") {
+    throw "RHI8 layered DX12 scene + transparent D2D UI composition path missing."
+}
+if ($ShellCpp -like "*useDirectComposition ? &directCompositionOverlay*") {
+    throw "Production DirectComposition path regressed to the low-quality GPU text overlay."
+}
+Write-Host "PASS|rhi8_separate_dx12_scene_d2d_ui_layers_present"
 
 if ($Vcx -notlike "*dcomp.lib*" -or $CMake -notlike "*dcomp*") {
     throw "Project files do not link DirectComposition."
@@ -81,7 +92,7 @@ $Exe = Join-Path $BuildDir "AceRhi8ZeroCopyViewportProbe.exe"
 $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
     Write-Host "INFO|compiler|cl.exe"
-    & $cl.Source /std:c++20 /EHsc /W4 $FoArg /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $Sources d3d12.lib dxgi.lib d3dcompiler.lib dcomp.lib
+    & $cl.Source /std:c++20 /EHsc /W4 $FoArg /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $Sources d3d12.lib d3d11.lib dxgi.lib d3dcompiler.lib dcomp.lib user32.lib
     if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit code $LASTEXITCODE" }
 
     Push-Location $Root

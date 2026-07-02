@@ -42,6 +42,7 @@ Write-Host "PASS|renderer_facade_present"
 $Probe = Join-Path $Root "Tools\AceRhi0RendererCoreProbe.cpp"
 $Sources = @(
   (Join-Path $Root "Source\Private\Renderer\RHI\AceRhi.cpp"),
+  (Join-Path $Root "Source\Private\Renderer\RHI\AceDx12Rhi.cpp"),
   (Join-Path $Root "Source\Private\Renderer\Scene\AceRenderScene.cpp"),
   (Join-Path $Root "Source\Private\Renderer\Core\AceRenderer.cpp")
 )
@@ -50,7 +51,7 @@ $Exe = Join-Path $BuildDir "AceRhi0RendererCoreProbe.exe"
 $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
   Write-Host "INFO|compiler|cl.exe"
-  & $cl.Source /std:c++20 /EHsc /W4 /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $Sources
+  & $cl.Source /std:c++20 /EHsc /W4 /I (Join-Path $Root "Source\Public") /Fe:$Exe $Probe $Sources d3d12.lib dxgi.lib d3dcompiler.lib dcomp.lib user32.lib
   if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit code $LASTEXITCODE" }
 } else {
   $gpp = Get-Command g++.exe -ErrorAction SilentlyContinue

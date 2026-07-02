@@ -8,17 +8,17 @@ namespace am::ui
     AceD2DViewportBridgePolicyDecision AceD2DSharedViewportBridgePolicy::Decide(const AceD2DViewportBridgePolicyInput& input)
     {
         AceD2DViewportBridgePolicyDecision decision{};
-        decision.syncMode = AceD2DViewportBridgeSyncMode::D3D11FlushOnly;
+        decision.syncMode = AceD2DViewportBridgeSyncMode::KeyedMutexExperimental;
         decision.buffering = AceD2DViewportBridgeBuffering::DoubleBufferedLastGood;
-        decision.miscFlag = D3D11_RESOURCE_MISC_SHARED;
+        decision.miscFlag = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
         decision.bufferCount = 2;
-        decision.drawPreviousCompletedSlot = true;
-        decision.allowSameFrameReadAfterWrite = false;
-        decision.allowKeyedMutex = false;
-        decision.requireD2DFlushBeforeRelease = false;
+        decision.drawPreviousCompletedSlot = false;
+        decision.allowSameFrameReadAfterWrite = true;
+        decision.allowKeyedMutex = true;
+        decision.requireD2DFlushBeforeRelease = true;
         decision.cacheBitmapPerSlot = true;
         decision.recreateOnlyOnExtentOrResourceEpoch = true;
-        decision.selectedPath = "shared_ui_d3d11_texture_double_buffer_last_good";
+        decision.selectedPath = "shared_ui_d3d11_texture_keyed_mutex";
         std::ostringstream reason;
         reason << "vtbridge5_policy"
             << ";flip=" << (input.flipModelSwapChain ? "true" : "false")
@@ -27,10 +27,7 @@ namespace am::ui
             << ";extent=" << input.width << "x" << input.height
             << ";direct_rejected=" << (input.directSurfaceRejected ? "true" : "false")
             << ";contention=" << input.previousContentionCount;
-        if (input.previousContentionCount > 0)
-        {
-            reason << ";keyed_mutex_available_but_not_default";
-        }
+        if (input.previousContentionCount > 0) { reason << ";keyed_mutex_contention_observed"; }
         if (input.liveResize)
         {
             reason << ";live_resize_prefers_last_good";

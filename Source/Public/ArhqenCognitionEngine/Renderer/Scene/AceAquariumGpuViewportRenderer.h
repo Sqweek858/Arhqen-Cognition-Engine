@@ -72,6 +72,9 @@ namespace am::renderer::scene
         am::renderer::rhi::U64 viewportTextureExports = 0;
         am::renderer::rhi::U64 viewportBridgeReadbackFallbacks = 0;
         am::renderer::rhi::U64 d2dTextureBridgeFrames = 0;
+        am::renderer::rhi::U64 geometryUploadFrames = 0;
+        am::renderer::rhi::U64 geometryReuseFrames = 0;
+        am::renderer::rhi::U64 compositionPresentedFrames = 0;
         am::renderer::rhi::U64 targetResizes = 0;
         am::renderer::rhi::U32 lastPrimitiveCount = 0;
         am::renderer::rhi::U32 lastVertexCount = 0;
@@ -114,6 +117,7 @@ namespace am::renderer::scene
             float compositionTop);
 
         bool initialized() const;
+        bool setCompositionOverlay(void* content, float left, float top, am::renderer::rhi::Extent2D extent, std::string* error = nullptr);
         void resetCompositionHost();
         AceAquariumGpuViewportStats stats() const { return stats_; }
         am::renderer::rhi::Dx12GpuAllocationStats gpuStats() const;
@@ -122,6 +126,7 @@ namespace am::renderer::scene
         am::renderer::rhi::AceViewportTextureBridgeStatus viewportBridgeStatus(bool uiGpuTextureSamplingAvailable) const;
         void* nativeD3D12Device() const;
         void* nativeD3D12GraphicsQueue() const;
+        std::wstring adapterName() const;
 
     public:
         struct Vertex
@@ -158,6 +163,7 @@ namespace am::renderer::scene
         am::renderer::rhi::Pipeline overlayPipeline_{};
         am::renderer::rhi::Extent2D targetExtent_{};
         std::size_t vertexBufferCapacityBytes_ = 0;
+        std::vector<Vertex> cachedUploadedVertices_{};
         AceAquariumGpuViewportStats stats_{};
         std::array<float, 16> worldToClip_{};
         bool hasWorldToClip_ = false;

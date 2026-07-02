@@ -98,8 +98,18 @@ namespace ace::aquarium_render
     void AceAquariumRealCamera::Reset()
     {
         position_ = { 6.5f, 5.0f, -8.0f };
+        movementVelocity_ = {};
         yaw_ = 0.78f;
         pitch_ = -0.38f;
+    }
+
+    void AceAquariumRealCamera::SetPosition(AceAqVec3 position)
+    {
+        // A programmatic camera teleport starts a new movement segment. Carrying
+        // old flight velocity through it produces the same one-frame lurch UE
+        // avoids by resetting its editor camera controller on view teleports.
+        position_ = position;
+        movementVelocity_ = {};
     }
 
     AceAqVec3 AceAquariumRealCamera::WorldUp()
@@ -156,8 +166,40 @@ namespace ace::aquarium_render
             movement = Mul(movement, 1.0f / len);
         }
 
-        const float dt = std::max(0.0f, deltaSeconds);
-        position_ = Add(position_, Mul(movement, moveSpeed_ * dt));
+        // UE editor camera model, adapted to this engine's scale: user input is an
+        // impulse which accelerates persistent velocity, then damping and a speed
+        // cap are applied. Small fixed upper-bound substeps make the result stable
+        // when UI presentation has a long/short frame pair. Braking is deliberately
+        // stronger than powered damping so keyboard flight stays crisp, not floaty.
+        float remaining = std::clamp(deltaSeconds, 0.0f, 0.050f);
+        constexpr float kMaxMovementStep = 1.0f / 120.0f;
+        const bool hasMovementImpulse = len > 0.00001f;
+        while (remaining > 0.0f)
+        {
+            const float step = std::min(remaining, kMaxMovementStep);
+            remaining -= step;
+
+            if (hasMovementImpulse)
+            {
+                movementVelocity_ = Add(movementVelocity_, Mul(movement, movementAcceleration_ * step));
+            }
+
+            const float damping = hasMovementImpulse ? movementDamping_ : movementBrakingDamping_;
+            const float dampingFactor = std::clamp(damping * step, 0.0f, 0.75f);
+            movementVelocity_ = Mul(movementVelocity_, 1.0f - dampingFactor);
+
+            const float speed = Length(movementVelocity_);
+            if (speed > moveSpeed_)
+            {
+                movementVelocity_ = Mul(movementVelocity_, moveSpeed_ / speed);
+            }
+            else if (speed < 0.0001f)
+            {
+                movementVelocity_ = {};
+            }
+
+            position_ = Add(position_, Mul(movementVelocity_, step));
+        }
     }
 
     void AceAquariumRealCamera::ApplyMouseDelta(float deltaX, float deltaY)

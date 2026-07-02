@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 
 namespace am::renderer::scene
 {
@@ -361,7 +362,7 @@ namespace am::renderer::scene
         DeviceDesc desc{};
         desc.backend = Backend::Dx12;
         desc.name = Name{"AceAquariumGpuViewportRenderer"};
-        desc.framesInFlight = 2;
+        desc.framesInFlight = 3;
 
         if (!device_->initialize(desc, error))
         {
@@ -393,6 +394,7 @@ namespace am::renderer::scene
         overlayPipeline_ = {};
         targetExtent_ = {};
         vertexBufferCapacityBytes_ = 0;
+        cachedUploadedVertices_.clear();
     }
 
     void AceAquariumGpuViewportRenderer::setWorldToClipMatrix(const std::array<float, 16>& matrix)
@@ -465,6 +467,26 @@ namespace am::renderer::scene
         return device_ ? device_->nativeD3D12GraphicsQueue() : nullptr;
     }
 
+    bool AceAquariumGpuViewportRenderer::setCompositionOverlay(
+        void* content,
+        float left,
+        float top,
+        am::renderer::rhi::Extent2D extent,
+        std::string* error)
+    {
+        if (!device_)
+        {
+            if (error) { *error = "Aquarium composition overlay requires an initialized DX12 device."; }
+            return false;
+        }
+        return device_->setCompositionOverlay(content, left, top, extent, error);
+    }
+
+    std::wstring AceAquariumGpuViewportRenderer::adapterName() const
+    {
+        return device_ ? device_->adapterName() : std::wstring{};
+    }
+
     bool AceAquariumGpuViewportRenderer::initialized() const
     {
         return device_ && device_->initialized();
@@ -487,10 +509,19 @@ namespace am::renderer::scene
             return true;
         }
 
-        if (!device_->createOffscreenSceneTargets(extent, &sceneColor_, &sceneDepth_, error))
+        Texture newColor{};
+        Texture newDepth{};
+        if (!device_->createOffscreenSceneTargets(extent, &newColor, &newDepth, error))
         {
             return false;
         }
+
+        const Texture oldColor = sceneColor_;
+        const Texture oldDepth = sceneDepth_;
+        sceneColor_ = newColor;
+        sceneDepth_ = newDepth;
+        if (oldColor.valid()) { device_->destroy(oldColor, nullptr); }
+        if (oldDepth.valid()) { device_->destroy(oldDepth, nullptr); }
 
         targetExtent_ = extent;
         ++stats_.targetResizes;
@@ -517,6 +548,7 @@ namespace am::renderer::scene
         pso.name = Name{"AceRhi7_AquariumWvpBasicColor"};
         pso.vs = vertexShader_;
         pso.topology = Topology::TriangleList;
+        pso.raster.cull = 0;
         pso.colorFormats.push_back(Format::BGRA8);
         pso.depthFormat = Format::D32F;
         pipeline_ = device_->resources().create(pso, error);
@@ -539,6 +571,7 @@ namespace am::renderer::scene
         pso.name = Name{"AcePerf2_GpuOverlayNdcBasicColor"};
         pso.vs = vertexShader_;
         pso.topology = Topology::TriangleList;
+        pso.raster.cull = 0;
         pso.colorFormats.push_back(Format::BGRA8);
         pso.depthFormat = Format::Unknown;
         overlayPipeline_ = device_->resources().create(pso, error);
@@ -566,12 +599,15 @@ namespace am::renderer::scene
         desc.memory = Memory::Upload;
         desc.persistentMap = true;
 
-        vertexBuffer_ = device_->resources().create(desc, error);
-        if (!vertexBuffer_.valid())
+        const Buffer newBuffer = device_->resources().create(desc, error);
+        if (!newBuffer.valid())
         {
-            vertexBufferCapacityBytes_ = 0;
             return false;
         }
+
+        const Buffer oldBuffer = vertexBuffer_;
+        vertexBuffer_ = newBuffer;
+        if (oldBuffer.valid()) { device_->destroy(oldBuffer, nullptr); }
 
         vertexBufferCapacityBytes_ = capacity;
         return true;
@@ -757,14 +793,35 @@ namespace am::renderer::scene
         const U32 overlayVertexCount = static_cast<U32>(vertices.size()) - sceneVertexCount;
 
         const std::size_t uploadBytes = vertices.size() * sizeof(Vertex);
-        if (!ensureVertexBuffer(uploadBytes, error))
+        const bool geometryChanged =
+            cachedUploadedVertices_.size() != vertices.size() ||
+            (uploadBytes > 0 && std::memcmp(cachedUploadedVertices_.data(), vertices.data(), uploadBytes) != 0);
+        if (geometryChanged)
         {
-            return false;
+            // Never rewrite a persistently mapped vertex buffer that an earlier
+            // GPU frame may still reference. Geometry changes are rare in this
+            // scene, so publish a new immutable upload buffer and let the RHI's
+            // deferred-release fence retire the old one safely.
+            const Buffer oldBuffer = vertexBuffer_;
+            const std::size_t oldCapacity = vertexBufferCapacityBytes_;
+            vertexBuffer_ = {};
+            vertexBufferCapacityBytes_ = 0;
+            if (!ensureVertexBuffer(uploadBytes, error) ||
+                !device_->upload(vertexBuffer_, vertices.data(), static_cast<U64>(uploadBytes), error))
+            {
+                if (vertexBuffer_.valid()) { device_->destroy(vertexBuffer_, nullptr); }
+                vertexBuffer_ = oldBuffer;
+                vertexBufferCapacityBytes_ = oldCapacity;
+                return false;
+            }
+            if (oldBuffer.valid()) { device_->destroy(oldBuffer, nullptr); }
+            cachedUploadedVertices_ = vertices;
+            ++stats_.geometryUploadFrames;
+            stats_.verticesUploaded += static_cast<U64>(vertices.size());
         }
-
-        if (!device_->upload(vertexBuffer_, vertices.data(), static_cast<U64>(uploadBytes), error))
+        else
         {
-            return false;
+            ++stats_.geometryReuseFrames;
         }
 
         CommandList list;
@@ -824,7 +881,6 @@ namespace am::renderer::scene
             ++stats_.framesRendered;
             ++stats_.d2dTextureBridgeFrames;
             device_->noteD2DTextureBridgeFrame();
-            stats_.verticesUploaded += static_cast<U64>(vertices.size());
             stats_.lastPrimitiveCount = static_cast<U32>(primitives.size());
             stats_.lastVertexCount = static_cast<U32>(vertices.size());
             stats_.lastExtent = extent;
@@ -862,7 +918,6 @@ namespace am::renderer::scene
             {
                 ++stats_.viewportBridgeReadbackFallbacks;
             }
-            stats_.verticesUploaded += static_cast<U64>(vertices.size());
             if (overlayVertexCount > 0)
             {
                 ++stats_.gpuOverlayBakedFrames;
@@ -874,6 +929,7 @@ namespace am::renderer::scene
             return true;
         }
 
+        const auto compositionStatsBefore = device_->gpuStats();
         const bool presentedThroughGpuComposition = device_->submitAndPresentBgra8ToComposition(
             {Queue::Graphics, &list},
             sceneColor_,
@@ -896,13 +952,20 @@ namespace am::renderer::scene
             snapshot->gpuComposited = true;
             snapshot->overlayBaked = overlayVertexCount > 0;
             snapshot->extent = extent;
-            snapshot->status = overlayVertexCount > 0 ?
-                "DX12 SceneColor + viewport UI baked into GPU texture and presented through one combined GPU composition command list" :
-                "DX12 SceneColor presented through one combined DirectComposition GPU command list";
+            const auto compositionStatsAfter = device_->gpuStats();
+            const bool reachedCompositor = compositionStatsAfter.compositionFrames > compositionStatsBefore.compositionFrames;
+            snapshot->status = reachedCompositor ?
+                (overlayVertexCount > 0 ?
+                    "DX12 SceneColor + viewport UI rendered and presented through DirectComposition" :
+                    "DX12 SceneColor rendered and presented through DirectComposition") :
+                "DX12 SceneColor rendered at RHI throughput; compositor retained the previous display frame";
             ++stats_.framesRendered;
             ++stats_.zeroCopyFrames;
-            ++stats_.gpuCompositedFrames;
-            stats_.verticesUploaded += static_cast<U64>(vertices.size());
+            if (reachedCompositor)
+            {
+                ++stats_.gpuCompositedFrames;
+                ++stats_.compositionPresentedFrames;
+            }
             if (overlayVertexCount > 0)
             {
                 ++stats_.gpuOverlayBakedFrames;
@@ -951,7 +1014,6 @@ namespace am::renderer::scene
         {
             ++stats_.viewportBridgeReadbackFallbacks;
         }
-        stats_.verticesUploaded += static_cast<U64>(vertices.size());
         if (overlayVertexCount > 0)
         {
             ++stats_.gpuOverlayBakedFrames;

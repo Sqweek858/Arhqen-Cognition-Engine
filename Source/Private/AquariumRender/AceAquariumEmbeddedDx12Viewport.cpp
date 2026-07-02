@@ -402,6 +402,8 @@ namespace ace::aquarium_render
         default:
             return DefWindowProcW(hwnd_, message, wParam, lParam);
         }
+
+        return DefWindowProcW(hwnd_, message, wParam, lParam);
     }
 
     bool AceAquariumEmbeddedDx12Viewport::RenderFrame(

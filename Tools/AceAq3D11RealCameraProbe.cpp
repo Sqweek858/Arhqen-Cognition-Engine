@@ -1,5 +1,6 @@
 #include "ArhqenCognitionEngine/AquariumRender/AceAquariumCamera.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <string>
@@ -33,6 +34,18 @@ namespace
     {
         return ace::aquarium_render::Length(ace::aquarium_render::Sub(a, b));
     }
+
+    void advance(
+        ace::aquarium_render::AceAquariumRealCamera& camera,
+        const ace::aquarium_render::AceAqCameraInput& input,
+        float seconds)
+    {
+        constexpr float step = 1.0f / 120.0f;
+        for (float elapsed = 0.0f; elapsed < seconds; elapsed += step)
+        {
+            camera.UpdateFromInput(input, std::min(step, seconds - elapsed));
+        }
+    }
 }
 
 int main()
@@ -59,7 +72,7 @@ int main()
     camera.SetYawPitch(0.0f, 0.80f);
     AceAqCameraInput input{};
     input.moveForward = true;
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     const auto afterForwardPitch = camera.Position();
     if (afterForwardPitch.y > 3.0f && afterForwardPitch.x > 2.0f)
     {
@@ -74,7 +87,7 @@ int main()
     camera.SetYawPitch(0.0f, -0.65f);
     input = {};
     input.moveForward = true;
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     if (camera.Position().y < -2.5f)
     {
         pass("w_moves_down_when_looking_down");
@@ -88,7 +101,7 @@ int main()
     camera.SetYawPitch(1.5707963f, 0.0f);
     input = {};
     input.moveRight = true;
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     if (camera.Position().x > 5.0f && std::fabs(camera.Position().z) < 0.15f)
     {
         pass("d_uses_camera_right_from_orientation");
@@ -102,7 +115,7 @@ int main()
     camera.SetYawPitch(1.5707963f, 0.90f);
     input = {};
     input.moveUp = true;
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     if (near(camera.Position().x, 0.0f, 0.01f) && camera.Position().y > 5.0f && near(camera.Position().z, 0.0f, 0.01f))
     {
         pass("e_uses_world_up_strict");
@@ -115,7 +128,7 @@ int main()
     camera.SetPosition({0.0f, 0.0f, 0.0f});
     input = {};
     input.moveDown = true;
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     if (camera.Position().y < -5.0f && near(camera.Position().x, 0.0f, 0.01f) && near(camera.Position().z, 0.0f, 0.01f))
     {
         pass("q_uses_world_down_strict");
@@ -130,7 +143,7 @@ int main()
     input = {};
     input.moveForward = true;
     input.moveRight = true;
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     const float diagonalDistance = Length(camera.Position());
     if (diagonalDistance <= camera.MoveSpeed() + 0.02f)
     {
@@ -167,11 +180,11 @@ int main()
     camera.SetYawPitch(0.0f, 0.0f);
     input = {};
     input.moveForward = true;
-    camera.UpdateFromInput(input, 0.25f);
+    advance(camera, input, 0.25f);
     const auto quarter = camera.Position();
 
     camera.SetPosition({0.0f, 0.0f, 0.0f});
-    camera.UpdateFromInput(input, 1.0f);
+    advance(camera, input, 1.0f);
     const auto full = camera.Position();
 
     if (distance(quarter, {0.0f, 0.0f, 0.0f}) < distance(full, {0.0f, 0.0f, 0.0f}) * 0.35f)
