@@ -68,6 +68,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Result.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\RuntimeClock.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\TaskQueue.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Units\AceUnits.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Dx12Renderer.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\NativeWindow.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\UiDrawList.h" />
@@ -207,6 +208,7 @@
     <ClCompile Include="Private\Core\PathUtils.cpp" />
     <ClCompile Include="Private\Core\RuntimeClock.cpp" />
     <ClCompile Include="Private\Core\TaskQueue.cpp" />
+    <ClCompile Include="Private\Core\Units\AceUnits.cpp" />
     <ClCompile Include="Private\Renderer\Dx12Renderer.cpp" />
     <ClCompile Include="Private\Renderer\NativeWindow.cpp" />
     <ClCompile Include="Private\Renderer\UiDrawList.cpp" />

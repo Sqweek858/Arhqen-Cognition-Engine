@@ -49,6 +49,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Core/PathUtils.cpp
     Source/Private/Core/RuntimeClock.cpp
     Source/Private/Core/TaskQueue.cpp
+    Source/Private/Core/Units/AceUnits.cpp
     Source/Private/Renderer/Dx12Renderer.cpp
     Source/Private/Renderer/NativeWindow.cpp
     Source/Private/Renderer/UiDrawList.cpp
@@ -148,6 +149,15 @@ else()
 endif()
 
 if (WIN32)
-    target_compile_definitions(ArhqenCognitionEngine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_compile_definitions(ArhqenCognitionEngine PRIVATE
+        WIN32
+        _WINDOWS
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        UNICODE
+        _UNICODE
+        $<$<CONFIG:Debug>:AM_DEBUG=1>
+        $<$<CONFIG:Release>:AM_RELEASE=1;NDEBUG>
+    )
     target_link_libraries(ArhqenCognitionEngine PRIVATE d3d12 d3d11 dxgi d3dcompiler dcomp d2d1 dwrite dwmapi)
 endif()
