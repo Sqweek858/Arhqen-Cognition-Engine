@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M1 — core foundations
-- Mini-milestone: M1.4a — contextual editor command registry (complete; ready to commit)
-- Latest known-good commit: `2aeb967` (`M1.3: add transaction and undo-redo foundation`)
+- Mini-milestone: M1.4b — centralized input routing and capture (complete; ready to commit)
+- Latest known-good commit: `a1b8e04` (`M1.4a: add contextual editor command registry`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -30,10 +30,11 @@
 - Added same-directory atomic file replacement with write-through flush, bounded reads and temporary-file cleanup.
 - Added central grouped transactions, reverse-order undo, forward-order redo, cancel/revert, scoped RAII and bounded history.
 - Added a centralized editor command registry with metadata, dynamic state, contextual shortcuts, rebinding, search and conflict detection.
+- Added centralized z-ordered input routing with focus, pointer capture, modal barriers, lifecycle repair and command fallback.
 
 ## Next action
 
-Commit and push M1.4a, then build M1.4b input routing/capture on top of the command registry.
+Commit and push M1.4b, then implement M1.4c reusable edge-resize/layout persistence primitives and integrate them into the existing shell.
 
 ## Existing baseline findings
 
@@ -70,4 +71,6 @@ Commit and push M1.4a, then build M1.4b input routing/capture on top of the comm
 - M1.3 MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_commands.ps1`: PASS (18 focused checks, `/W4 /WX`).
 - M1.4a MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_input_router.ps1`: PASS (13 focused checks, `/W4 /WX`).
+- M1.4b MSBuild Debug/Release and CMake Debug: PASS.
 - Known stale failures are recorded above and are not hidden.

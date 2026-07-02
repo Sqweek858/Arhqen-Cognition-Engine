@@ -49,3 +49,8 @@ ACE adaptation: a compact operation-based transaction manager provides grouping,
 - Context-specific command lists take precedence over global bindings, while shortcut conflicts remain inspectable.
 
 ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels/descriptions, dynamic enabled/checked state, contextual chords, rebinding, search and conflict diagnostics. Menus, toolbar, command palette and shortcut editor will consume this registry rather than hardcoded callbacks.
+
+## M1.4b — input routing
+
+- Slate's useful architectural boundary is a single routed event path with explicit handled replies, focus ownership, mouse capture and higher-layer popup/modal precedence.
+- ACE adaptation: `InputRouter` owns those lifetimes and invokes `CommandRegistry` only after the focused target declines a key event. Capture and focus are repaired on release, disable, unregister, modal activation and window deactivation.

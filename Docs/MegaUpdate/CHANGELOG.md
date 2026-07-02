@@ -51,3 +51,10 @@
 - Added shortcut rebinding, context precedence, searchable command views and deterministic conflict reporting.
 - Ambiguous shortcuts are never executed arbitrarily.
 - Added warning-as-error behavior tests, including a move/evaluation-order regression test discovered during implementation.
+
+## 2026-07-02 — M1.4b input routing
+
+- Added one z-ordered route for pointer, wheel, keyboard and text events.
+- Added explicit focus and pointer-capture ownership with cleanup on release, disable, unregister and window deactivation.
+- Added modal barriers and context-aware command fallback after focused widgets decline an event.
+- Added warning-as-error lifecycle tests and verified MSBuild Debug/Release plus CMake Debug.
