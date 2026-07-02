@@ -44,3 +44,10 @@
 - Added cancel/revert, scoped auto-commit, redo-branch invalidation and history metadata.
 - Added entry and memory budgets with oldest-history eviction.
 - Added warning-as-error behavioral tests and verified all build configurations.
+
+## 2026-07-02 — M1.4a editor commands
+
+- Added a single registry for command metadata, execution, enabled/checked state and contextual shortcuts.
+- Added shortcut rebinding, context precedence, searchable command views and deterministic conflict reporting.
+- Ambiguous shortcuts are never executed arbitrarily.
+- Added warning-as-error behavior tests, including a move/evaluation-order regression test discovered during implementation.

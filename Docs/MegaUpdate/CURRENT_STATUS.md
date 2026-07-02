@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M1 — core foundations
-- Mini-milestone: M1.3 — transaction/undo-redo foundation (complete; ready to commit)
-- Latest known-good commit: `48905f5` (`M1.2b: add versioned archives and atomic saves`)
+- Mini-milestone: M1.4a — contextual editor command registry (complete; ready to commit)
+- Latest known-good commit: `2aeb967` (`M1.3: add transaction and undo-redo foundation`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -29,10 +29,11 @@
 - Added typed primitive/string/GUID archive IO with sticky explicit errors.
 - Added same-directory atomic file replacement with write-through flush, bounded reads and temporary-file cleanup.
 - Added central grouped transactions, reverse-order undo, forward-order redo, cancel/revert, scoped RAII and bounded history.
+- Added a centralized editor command registry with metadata, dynamic state, contextual shortcuts, rebinding, search and conflict detection.
 
 ## Next action
 
-Commit and push M1.3, then begin M1.4 command/input/style/text/layout foundations.
+Commit and push M1.4a, then build M1.4b input routing/capture on top of the command registry.
 
 ## Existing baseline findings
 
@@ -67,4 +68,6 @@ Commit and push M1.3, then begin M1.4 command/input/style/text/layout foundation
 - M1.2b MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_transactions.ps1`: PASS (21 focused checks, `/W4 /WX`).
 - M1.3 MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_commands.ps1`: PASS (18 focused checks, `/W4 /WX`).
+- M1.4a MSBuild Debug/Release and CMake Debug: PASS.
 - Known stale failures are recorded above and are not hidden.

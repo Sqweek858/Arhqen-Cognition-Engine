@@ -55,6 +55,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Core/TaskQueue.cpp
     Source/Private/Core/Units/AceUnits.cpp
     Source/Private/Editor/Transactions/AceTransaction.cpp
+    Source/Private/Editor/Commands/AceCommandRegistry.cpp
     Source/Private/Renderer/Dx12Renderer.cpp
     Source/Private/Renderer/NativeWindow.cpp
     Source/Private/Renderer/UiDrawList.cpp

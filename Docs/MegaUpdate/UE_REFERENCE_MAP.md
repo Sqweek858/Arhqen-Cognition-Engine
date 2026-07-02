@@ -42,3 +42,10 @@ ACE adaptation: the initial archive is deliberately smaller than UE's archive st
 - `Editor/UnrealEd/Private/EditorTransaction.cpp`: grouped records undo in reverse order, redo forward, and custom changes avoid unnecessary whole-object snapshots.
 
 ACE adaptation: a compact operation-based transaction manager provides grouping, scoped commit/cancel, redo-branch invalidation and explicit memory/entry budgets. Property, transform, graph, asset and landscape layers will supply typed operations to this single manager.
+
+## M1.4a — editor commands
+
+- UE editor modules consistently expose `FUICommandInfo` metadata and bind it through shared `FUICommandList` instances; command definitions remain separate from widgets that display or invoke them.
+- Context-specific command lists take precedence over global bindings, while shortcut conflicts remain inspectable.
+
+ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels/descriptions, dynamic enabled/checked state, contextual chords, rebinding, search and conflict diagnostics. Menus, toolbar, command palette and shortcut editor will consume this registry rather than hardcoded callbacks.
