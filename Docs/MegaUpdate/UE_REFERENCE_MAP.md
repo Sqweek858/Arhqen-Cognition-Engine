@@ -35,3 +35,10 @@ ACE adaptation: `Guid` persists independently from asset names, while `AssetPath
 - `Runtime/Core/Tests/Misc/FileTest.cpp`: file behavior is tested independently from object serialization.
 
 ACE adaptation: the initial archive is deliberately smaller than UE's archive stack but preserves the essential contract: fixed endianness, independent container/schema/object versions, bounded payloads, corruption detection and typed reads. Persistence uses a flushed temporary file followed by same-directory atomic replacement; higher asset layers must first resolve paths through the `/Game` sandbox.
+
+## M1.3 — transactions
+
+- `Editor/UnrealEd/Public/ScopedTransaction.h`: RAII defines a deliberate transaction boundary and supports cancellation.
+- `Editor/UnrealEd/Private/EditorTransaction.cpp`: grouped records undo in reverse order, redo forward, and custom changes avoid unnecessary whole-object snapshots.
+
+ACE adaptation: a compact operation-based transaction manager provides grouping, scoped commit/cancel, redo-branch invalidation and explicit memory/entry budgets. Property, transform, graph, asset and landscape layers will supply typed operations to this single manager.

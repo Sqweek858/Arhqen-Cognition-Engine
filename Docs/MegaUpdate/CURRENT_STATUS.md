@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M1 — core foundations
-- Mini-milestone: M1.2b — versioned archives and atomic saves (complete; ready to commit)
-- Latest known-good commit: `5edab15` (`M1.2a: add stable IDs and sandboxed asset paths`)
+- Mini-milestone: M1.3 — transaction/undo-redo foundation (complete; ready to commit)
+- Latest known-good commit: `48905f5` (`M1.2b: add versioned archives and atomic saves`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -28,10 +28,11 @@
 - Added a fixed little-endian ACE binary container with schema GUID, independent object version, payload bounds and checksum validation.
 - Added typed primitive/string/GUID archive IO with sticky explicit errors.
 - Added same-directory atomic file replacement with write-through flush, bounded reads and temporary-file cleanup.
+- Added central grouped transactions, reverse-order undo, forward-order redo, cancel/revert, scoped RAII and bounded history.
 
 ## Next action
 
-Commit and push M1.2b, then begin M1.3 transaction/undo-redo architecture and implementation.
+Commit and push M1.3, then begin M1.4 command/input/style/text/layout foundations.
 
 ## Existing baseline findings
 
@@ -64,4 +65,6 @@ Commit and push M1.2b, then begin M1.3 transaction/undo-redo architecture and im
 - `validate_ace_identity_asset_path.ps1`: PASS (33 focused checks, `/W4 /WX`).
 - `validate_ace_archive.ps1`: PASS (27 focused checks, `/W4 /WX`).
 - M1.2b MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_transactions.ps1`: PASS (21 focused checks, `/W4 /WX`).
+- M1.3 MSBuild Debug/Release and CMake Debug: PASS.
 - Known stale failures are recorded above and are not hidden.

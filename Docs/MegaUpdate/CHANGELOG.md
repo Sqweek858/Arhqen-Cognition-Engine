@@ -37,3 +37,10 @@
 - Added explicit errors for corruption, truncation, incompatible schemas/versions and unsafe sizes.
 - Added durable same-directory atomic replacement and bounded file reads on Windows.
 - Added warning-as-error failure-path tests and verified MSBuild Debug/Release plus CMake Debug.
+
+## 2026-07-02 — M1.3 transactions
+
+- Added central grouped transactions with deterministic undo/redo ordering.
+- Added cancel/revert, scoped auto-commit, redo-branch invalidation and history metadata.
+- Added entry and memory budgets with oldest-history eviction.
+- Added warning-as-error behavioral tests and verified all build configurations.
