@@ -29,3 +29,11 @@
 - Added traversal, invalid-character, reserved-name, length and malformed UTF-8 rejection.
 - Added NFC normalization and Unicode-aware case keys to prevent visually duplicate assets on Windows.
 - Added warning-as-error identity/path probes and both build-system registrations.
+
+## 2026-07-02 — M1.2b versioned persistence
+
+- Added a stable little-endian ACE container with schema GUID, container/object versions, payload length and FNV-1a checksum.
+- Added bounded readers and writers for numeric primitives, booleans, GUIDs and validated UTF-8 strings.
+- Added explicit errors for corruption, truncation, incompatible schemas/versions and unsafe sizes.
+- Added durable same-directory atomic replacement and bounded file reads on Windows.
+- Added warning-as-error failure-path tests and verified MSBuild Debug/Release plus CMake Debug.

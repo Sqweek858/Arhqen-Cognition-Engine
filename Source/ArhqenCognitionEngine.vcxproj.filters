@@ -54,6 +54,8 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Result.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Identity\AceGuid.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\RuntimeClock.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Serialization\AceArchive.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Serialization\AceAtomicFile.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\TaskQueue.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Units\AceUnits.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Dx12Renderer.h"><Filter></Filter></ClInclude>
@@ -196,6 +198,8 @@
     <ClCompile Include="Private\Core\Identity\AceGuid.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\PathUtils.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\RuntimeClock.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Core\Serialization\AceArchive.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Core\Serialization\AceAtomicFile.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\TaskQueue.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Units\AceUnits.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Renderer\Dx12Renderer.cpp"><Filter></Filter></ClCompile>

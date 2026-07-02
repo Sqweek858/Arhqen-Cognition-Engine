@@ -27,3 +27,11 @@ ACE adaptation: canonical storage is strict SI (meters, radians, seconds, kilogr
 - `Runtime/CoreUObject/Public/Misc/PackagePath.h`: package identity is a mounted virtual name distinct from a local filesystem path; validation and conversion happen at the mount boundary.
 
 ACE adaptation: `Guid` persists independently from asset names, while `AssetPath` exposes only `/Game/...` and maps it to the confirmed `Content/` root. ACE additionally normalizes UTF-8 to NFC and creates a Unicode case-insensitive key because the current target filesystem is Windows.
+
+## M1.2b — versioned serialization and atomic files
+
+- `Runtime/Core/Public/Serialization/Archive.h`: serialization owns explicit loading/saving state, versions and bounded typed operations rather than raw struct dumps.
+- `Runtime/Core/Tests/Serialization/CompactBinaryWriterTest.cpp`: round-trip and malformed-input tests are part of the format contract.
+- `Runtime/Core/Tests/Misc/FileTest.cpp`: file behavior is tested independently from object serialization.
+
+ACE adaptation: the initial archive is deliberately smaller than UE's archive stack but preserves the essential contract: fixed endianness, independent container/schema/object versions, bounded payloads, corruption detection and typed reads. Persistence uses a flushed temporary file followed by same-directory atomic replacement; higher asset layers must first resolve paths through the `/Game` sandbox.

@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M1 — core foundations
-- Mini-milestone: M1.2a — stable GUIDs and sandboxed asset paths (complete; ready to commit)
-- Latest known-good commit: `86b1005` (`M1.1: add canonical SI unit system`)
+- Mini-milestone: M1.2b — versioned archives and atomic saves (complete; ready to commit)
+- Latest known-good commit: `5edab15` (`M1.2a: add stable IDs and sandboxed asset paths`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -25,10 +25,13 @@
 - Fixed a pre-existing CMake/MSBuild mismatch by making CMake use the same Unicode Win32 contract and configuration defines as the Visual Studio project.
 - Added RFC 4122 version-4 stable GUID values with strict canonical parsing and hashing.
 - Added the `/Game` virtual mount mapped to `Content/`, with traversal protection, Windows filename checks, UTF-8 validation, NFC normalization and case-insensitive Unicode comparison keys.
+- Added a fixed little-endian ACE binary container with schema GUID, independent object version, payload bounds and checksum validation.
+- Added typed primitive/string/GUID archive IO with sticky explicit errors.
+- Added same-directory atomic file replacement with write-through flush, bounded reads and temporary-file cleanup.
 
 ## Next action
 
-Commit and push M1.2a, then implement the M1.2b versioned archive and atomic-save primitives.
+Commit and push M1.2b, then begin M1.3 transaction/undo-redo architecture and implementation.
 
 ## Existing baseline findings
 
@@ -59,4 +62,6 @@ Commit and push M1.2a, then implement the M1.2b versioned archive and atomic-sav
 - `validate_ace_units.ps1` under VS developer environment: PASS (31 focused checks, `/W4 /WX`).
 - CMake Debug full build: PASS after aligning Unicode/configuration defines with MSBuild.
 - `validate_ace_identity_asset_path.ps1`: PASS (33 focused checks, `/W4 /WX`).
+- `validate_ace_archive.ps1`: PASS (27 focused checks, `/W4 /WX`).
+- M1.2b MSBuild Debug/Release and CMake Debug: PASS.
 - Known stale failures are recorded above and are not hidden.

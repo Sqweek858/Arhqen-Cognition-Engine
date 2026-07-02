@@ -49,6 +49,8 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Core/Identity/AceGuid.cpp
     Source/Private/Core/Logger.cpp
     Source/Private/Core/PathUtils.cpp
+    Source/Private/Core/Serialization/AceArchive.cpp
+    Source/Private/Core/Serialization/AceAtomicFile.cpp
     Source/Private/Core/RuntimeClock.cpp
     Source/Private/Core/TaskQueue.cpp
     Source/Private/Core/Units/AceUnits.cpp
