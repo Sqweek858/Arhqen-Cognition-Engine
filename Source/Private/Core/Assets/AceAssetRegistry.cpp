@@ -440,4 +440,127 @@ namespace am::core::assets
         const auto found = assetIndexById_.find(id);
         return found == assetIndexById_.end() ? nullptr : &snapshot_.assets[found->second];
     }
+
+    bool AssetRegistry::remapPath(const AssetPath& oldPath, const AssetPath& newPath, std::string* error)
+    {
+        if (error) error->clear();
+        if (!initialized_ || oldPath.empty() || newPath.empty() || oldPath.isRoot() || newPath.isRoot() ||
+            oldPath == newPath)
+        {
+            fail(error, "Asset registry path move is invalid");
+            return false;
+        }
+
+        const std::string oldKey = oldPath.comparisonKey();
+        const std::string newKey = newPath.comparisonKey();
+        auto matchesPrefix = [](std::string_view value, std::string_view prefix)
+        {
+            return value == prefix || (value.size() > prefix.size() && value.starts_with(prefix) && value[prefix.size()] == '/');
+        };
+        if (matchesPrefix(newKey, oldKey))
+        {
+            fail(error, "Asset registry path cannot move into its own subtree");
+            return false;
+        }
+
+        std::string actualOldRoot;
+        for (const auto& folder : snapshot_.folders)
+            if (folder.path.comparisonKey() == oldKey) { actualOldRoot = folder.path.string(); break; }
+        if (actualOldRoot.empty())
+            for (const auto& asset : snapshot_.assets)
+                if (asset.path.comparisonKey() == oldKey) { actualOldRoot = asset.path.string(); break; }
+        if (actualOldRoot.empty())
+        {
+            fail(error, "Asset registry move source does not exist");
+            return false;
+        }
+
+        AssetRegistrySnapshot next = snapshot_;
+        std::vector<AssetRegistryDelta::Move> moves;
+        auto remap = [&](AssetPath& path, const Guid* id) -> bool
+        {
+            const std::string key = path.comparisonKey();
+            if (!matchesPrefix(key, oldKey)) return true;
+            if (path.string().size() < actualOldRoot.size()) return false;
+            const std::string candidateText = newPath.string() + path.string().substr(actualOldRoot.size());
+            const auto candidate = AssetPath::parse(candidateText);
+            if (!candidate) return false;
+            if (id) moves.push_back({*id, path, *candidate});
+            path = *candidate;
+            return true;
+        };
+        for (auto& asset : next.assets) if (!remap(asset.path, &asset.id))
+        {
+            fail(error, "Asset registry could not construct moved asset path");
+            return false;
+        }
+        for (auto& folder : next.folders) if (!remap(folder.path, nullptr))
+        {
+            fail(error, "Asset registry could not construct moved folder path");
+            return false;
+        }
+
+        std::unordered_set<std::string> nextKeys;
+        for (const auto& asset : next.assets)
+        {
+            const std::string key = asset.path.comparisonKey();
+            if (!nextKeys.emplace(key).second)
+            {
+                fail(error, "Asset registry move collides with another asset");
+                return false;
+            }
+        }
+        for (const auto& folder : next.folders)
+        {
+            if (!nextKeys.emplace(folder.path.comparisonKey()).second)
+            {
+                fail(error, "Asset registry move collides with another folder");
+                return false;
+            }
+        }
+
+        auto byPath = [](const auto& lhs, const auto& rhs) { return lhs.path.comparisonKey() < rhs.path.comparisonKey(); };
+        std::sort(next.assets.begin(), next.assets.end(), byPath);
+        std::sort(next.folders.begin(), next.folders.end(), byPath);
+        next.generation = snapshot_.generation + 1;
+
+        std::unordered_map<std::string, Guid> nextStable;
+        std::unordered_map<std::string, std::size_t> nextPathIndex;
+        std::unordered_map<Guid, std::size_t, GuidHash> nextIdIndex;
+        for (std::size_t index = 0; index < next.assets.size(); ++index)
+        {
+            const auto& asset = next.assets[index];
+            const std::string key = asset.path.comparisonKey();
+            if (!nextStable.emplace(key, asset.id).second ||
+                !nextPathIndex.emplace(key, index).second ||
+                !nextIdIndex.emplace(asset.id, index).second)
+            {
+                fail(error, "Asset registry move produced duplicate identity");
+                return false;
+            }
+        }
+
+        const auto oldSnapshot = snapshot_;
+        const auto oldDelta = lastDelta_;
+        auto oldStable = stableIdsByPathKey_;
+        auto oldPathIndex = assetIndexByPathKey_;
+        auto oldIdIndex = assetIndexById_;
+        snapshot_ = std::move(next);
+        stableIdsByPathKey_ = std::move(nextStable);
+        assetIndexByPathKey_ = std::move(nextPathIndex);
+        assetIndexById_ = std::move(nextIdIndex);
+        lastDelta_ = {};
+        lastDelta_.generation = snapshot_.generation;
+        lastDelta_.moved = std::move(moves);
+        if (!saveStableIds(error))
+        {
+            snapshot_ = oldSnapshot;
+            lastDelta_ = oldDelta;
+            stableIdsByPathKey_ = std::move(oldStable);
+            assetIndexByPathKey_ = std::move(oldPathIndex);
+            assetIndexById_ = std::move(oldIdIndex);
+            return false;
+        }
+        return true;
+    }
 }

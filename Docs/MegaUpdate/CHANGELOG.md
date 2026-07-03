@@ -154,3 +154,12 @@
 - Added deterministic registry deltas containing stable GUID lists for added, modified and removed assets.
 - Made rescan publication transactional so duplicate identity/path failure cannot leave partially rebuilt lookup indexes.
 - Added a 34-check warning-as-error gate and an end-to-end application add/remove watch smoke with an empty final Content root.
+
+## 2026-07-03 - M3.3a asset identity moves and references
+
+- Added identity-preserving path remapping for one asset or every asset/folder beneath a moved subtree.
+- Added explicit moved deltas containing stable GUID, old virtual path and new virtual path.
+- Kept remap publication and external state persistence transactional with complete rollback after write failure.
+- Rejected collisions, root moves and moves into the source's own subtree before mutating live indexes.
+- Added a bounded bidirectional asset reference index with deduplication, deterministic queries and reference-aware delete eligibility.
+- Expanded the warning-as-error asset gate to 49 checks and passed all build configurations.

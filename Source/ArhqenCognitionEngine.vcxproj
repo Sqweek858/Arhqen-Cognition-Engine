@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetRegistry.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetDirectoryWatcher.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetReferences.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Viewport\AceCameraSpeedModel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Input\AceInputRouter.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Commands\AceCommandRegistry.h" />
@@ -227,6 +228,7 @@
     <ClCompile Include="Private\Core\Assets\AceAssetPath.cpp" />
     <ClCompile Include="Private\Core\Assets\AceAssetRegistry.cpp" />
     <ClCompile Include="Private\Core\Assets\AceAssetDirectoryWatcher.cpp" />
+    <ClCompile Include="Private\Core\Assets\AceAssetReferences.cpp" />
     <ClCompile Include="Private\Core\Application.cpp" />
     <ClCompile Include="Private\Core\Logger.cpp" />
     <ClCompile Include="Private\Core\Identity\AceGuid.cpp" />

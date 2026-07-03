@@ -9,6 +9,7 @@ $Sources = @(
     (Join-Path $Root "Tools\AceAssetRegistryProbe.cpp"),
     (Join-Path $Root "Source\Private\Core\Assets\AceAssetRegistry.cpp"),
     (Join-Path $Root "Source\Private\Core\Assets\AceAssetDirectoryWatcher.cpp"),
+    (Join-Path $Root "Source\Private\Core\Assets\AceAssetReferences.cpp"),
     (Join-Path $Root "Source\Private\Core\Assets\AceAssetPath.cpp"),
     (Join-Path $Root "Source\Private\Core\Identity\AceGuid.cpp"),
     (Join-Path $Root "Source\Private\Core\Serialization\AceArchive.cpp"),

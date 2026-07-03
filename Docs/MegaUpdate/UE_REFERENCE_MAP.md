@@ -105,3 +105,10 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - `Developer/DirectoryWatcher/Private/Windows/DirectoryWatchRequestWindows.cpp`: Windows subtree watches are represented by a native request and translate platform notifications before consumer delivery.
 - `Runtime/AssetRegistry/Private/AssetRegistry.cpp` registers coarse content roots with `IncludeDirectoryChanges`, and treats watcher overflow as an explicit rescan condition rather than trusting an incomplete event list.
 - ACE adaptation: `AssetDirectoryWatcher` owns one overlapped `ReadDirectoryChangesW` request and a bounded cross-thread queue. Application tick owns debounce and registry mutation; consumers receive stable GUID deltas. ACE currently rebuilds the compact snapshot per debounced batch, which is safer and fast for the present empty/small Content root; the public delta contract permits a future path-local scanner without UI changes.
+
+## M3.3a - identity moves and reference safety
+
+- `Runtime/AssetRegistry/Public/AssetRegistry/IAssetRegistry.h` exposes an explicit rename event with old object path rather than representing a rename as unrelated delete/add notifications.
+- `Editor/WorldBookmark/Private/WorldBookmark/Browser/FolderTreeItem.cpp` validates target folder paths and routes subtree renames through Asset Tools rather than raw filesystem calls.
+- `Editor/UnrealEd/Public/AssetDeleteModel.h` treats reference discovery as a required phase of deletion, not a cosmetic confirmation dialog.
+- ACE adaptation: registry remaps preserve GUIDs across file/folder moves and publish old/new paths. `AssetReferenceIndex` keeps forward and reverse edges so the next filesystem-operations slice can refuse unsafe deletion before touching disk.

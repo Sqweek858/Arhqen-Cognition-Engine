@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.2 - live directory watch and registry deltas (complete; ready to commit)
-- Latest known-good commit: `3a1a2eb` (`M3.1: add sandboxed asset registry`)
+- Mini-milestone: M3.3a - identity-preserving moves and reference index (complete; ready to commit)
+- Latest known-good commit: `dd5453b` (`M3.2: add live asset watch and deltas`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -63,10 +63,14 @@
 - Moved all registry mutation to the main runtime tick behind a quiet-period debounce and maximum-latency bound.
 - Added deterministic per-generation added/modified/removed GUID deltas for future Content Browser consumers.
 - Added clean cancellation/join/handle teardown and observable watcher batch/queue/drop/rescan counters.
+- Added transactional registry remapping for individual assets or complete folder subtrees while preserving every stable GUID.
+- Added explicit moved deltas carrying GUID plus old/new virtual paths and persistence across the following physical rescan.
+- Added collision, root, self-subtree and invalid-destination rejection without partially publishing indexes or state.
+- Added a bounded bidirectional reference index with deterministic forward/reverse queries and delete guards.
 
 ## Next action
 
-Commit and push M3.2, then implement transactional asset/folder create, rename, duplicate, move and delete operations before exposing Content Browser.
+Commit and push M3.3a, then implement filesystem-backed create/rename/move/duplicate/delete operations with undo storage and reference-checked deletion.
 
 ## Existing baseline findings
 
@@ -114,3 +118,5 @@ Commit and push M3.2, then implement transactional asset/folder create, rename, 
 - M3.1 identity/path and archive regressions, runtime-empty-Content smoke, MSBuild Debug/Release and CMake Debug: PASS.
 - Expanded Asset Registry gate: PASS (34 checks including live native watch, rename pairs and added/modified/removed deltas).
 - M3.2 end-to-end application watch smoke logged both add/remove generations and restored Content to zero entries; all builds PASS.
+- Expanded Asset Registry/reference gate: PASS (49 checks including subtree moves, move deltas, collisions and bidirectional delete guards).
+- M3.3a MSBuild Debug/Release and CMake Debug: PASS.

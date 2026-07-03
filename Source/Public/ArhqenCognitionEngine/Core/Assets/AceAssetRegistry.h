@@ -53,15 +53,23 @@ namespace am::core::assets
 
     struct AssetRegistryDelta
     {
+        struct Move
+        {
+            Guid id{};
+            AssetPath oldPath{};
+            AssetPath newPath{};
+        };
+
         std::uint64_t generation = 0;
         bool fullRescan = false;
         std::vector<Guid> added;
         std::vector<Guid> modified;
         std::vector<Guid> removed;
+        std::vector<Move> moved;
 
         [[nodiscard]] bool empty() const noexcept
         {
-            return added.empty() && modified.empty() && removed.empty();
+            return added.empty() && modified.empty() && removed.empty() && moved.empty();
         }
     };
 
@@ -72,6 +80,7 @@ namespace am::core::assets
                         std::filesystem::path stateFile,
                         std::string* error = nullptr);
         bool rescan(std::string* error = nullptr, bool fullRescan = false);
+        bool remapPath(const AssetPath& oldPath, const AssetPath& newPath, std::string* error = nullptr);
 
         [[nodiscard]] bool initialized() const noexcept { return initialized_; }
         [[nodiscard]] const std::filesystem::path& contentRoot() const noexcept { return contentRoot_; }

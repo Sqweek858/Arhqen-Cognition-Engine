@@ -1,6 +1,8 @@
 #include "ArhqenCognitionEngine/Core/Assets/AceAssetRegistry.h"
 #include "ArhqenCognitionEngine/Core/Assets/AceAssetDirectoryWatcher.h"
+#include "ArhqenCognitionEngine/Core/Assets/AceAssetReferences.h"
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -115,6 +117,63 @@ int main()
     check(recovered.initialize(content, state, &error), "corrupt_state_recovers_without_losing_content");
     check(!recovered.lastWarning().empty() && recovered.snapshot().assets.size() == 4,
         "corrupt_state_emits_warning_and_rebuilds");
+
+    const auto oldMaterials = am::core::assets::AssetPath::parse("/Game/Materials");
+    const auto newMaterials = am::core::assets::AssetPath::parse("/Game/Surface");
+    const auto meshFolder = am::core::assets::AssetPath::parse("/Game/Meshes");
+    const auto ownChild = am::core::assets::AssetPath::parse("/Game/Surface/Child");
+    const auto* beforeMove = recovered.findByPath("/Game/Materials/M_Rock.acemat");
+    const auto beforeMoveId = beforeMove ? beforeMove->id : am::core::Guid{};
+    std::filesystem::rename(content / "Materials", content / "Surface", ec);
+    check(!ec && oldMaterials && newMaterials && recovered.remapPath(*oldMaterials, *newMaterials, &error),
+        "folder_subtree_identity_remap_succeeds");
+    const auto* afterMove = recovered.findByPath("/Game/Surface/M_Rock.acemat");
+    check(afterMove && afterMove->id == beforeMoveId &&
+        recovered.findByPath("/Game/Materials/M_Rock.acemat") == nullptr,
+        "folder_move_preserves_asset_identity");
+    check(recovered.lastDelta().moved.size() == 1 &&
+        recovered.lastDelta().moved.front().oldPath.string() == "/Game/Materials/M_Rock.acemat" &&
+        recovered.lastDelta().moved.front().newPath.string() == "/Game/Surface/M_Rock.acemat",
+        "folder_move_publishes_explicit_move_delta");
+    check(recovered.rescan(&error) && recovered.findByPath("/Game/Surface/M_Rock.acemat") &&
+        recovered.findByPath("/Game/Surface/M_Rock.acemat")->id == beforeMoveId,
+        "moved_identity_survives_physical_rescan");
+    check(meshFolder && !recovered.remapPath(*newMaterials, *meshFolder, &error) && !error.empty(),
+        "move_collision_is_rejected_transactionally");
+    check(ownChild && !recovered.remapPath(*newMaterials, *ownChild, &error) && !error.empty(),
+        "move_into_own_subtree_is_rejected");
+    std::filesystem::rename(content / "Surface", content / "Materials", ec);
+    check(!ec && recovered.remapPath(*newMaterials, *oldMaterials, &error), "folder_identity_remap_is_reversible");
+
+    am::core::assets::AssetReferenceIndex references;
+    const auto referencerA = am::core::Guid::create();
+    const auto referencerB = am::core::Guid::create();
+    const auto targetA = am::core::Guid::create();
+    const auto targetB = am::core::Guid::create();
+    const std::array initialTargets{targetA, targetB, targetA};
+    check(references.setReferences(referencerA, initialTargets, &error) && references.edgeCount() == 2,
+        "reference_index_deduplicates_forward_edges");
+    check(references.referencesFrom(referencerA).size() == 2 &&
+        references.referencersTo(targetA).size() == 1,
+        "reference_index_is_bidirectional");
+    check(!references.canDelete(targetA) && references.canDelete(referencerB),
+        "delete_guard_uses_reverse_references");
+    const std::array replacementTargets{targetB};
+    check(references.setReferences(referencerA, replacementTargets, &error) &&
+        !references.hasReferencers(targetA) && references.hasReferencers(targetB),
+        "reference_replacement_removes_stale_reverse_edges");
+    check(references.setReferences(referencerB, replacementTargets, &error) &&
+        references.referencersTo(targetB).size() == 2,
+        "multiple_referencers_are_indexed");
+    const std::array invalidTargets{referencerA};
+    check(!references.setReferences(referencerA, invalidTargets, &error) &&
+        references.referencesFrom(referencerA).size() == 1,
+        "invalid_self_reference_does_not_mutate_existing_edges");
+    check(references.removeReferencer(referencerA) && references.referencersTo(targetB).size() == 1,
+        "referencer_removal_repairs_reverse_index");
+    references.clear();
+    check(references.edgeCount() == 0 && references.referencerCount() == 0,
+        "reference_index_clear_is_complete");
 
     check(AssetRegistry::typeFromExtension(".FBX") == AssetType::MeshSource &&
         AssetRegistry::typeFromExtension(".cpp") == std::nullopt,
