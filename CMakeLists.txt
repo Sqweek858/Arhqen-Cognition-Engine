@@ -60,6 +60,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Editor/Workspace/AceEditorWorkspaceLayout.cpp
     Source/Private/Editor/Workspace/AceEditorWorkspaceGeometry.cpp
     Source/Private/Editor/Workspace/AceEditorWorkspaceController.cpp
+    Source/Private/Editor/Viewport/AceCameraSpeedModel.cpp
     Source/Private/Renderer/Dx12Renderer.cpp
     Source/Private/Renderer/NativeWindow.cpp
     Source/Private/Renderer/UiDrawList.cpp

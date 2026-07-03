@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M2 - main Engine editor shell
-- Mini-milestone: M2.3b - visible Engine-mode shell integration (complete; ready to commit)
-- Latest known-good commit: `3190f73` (`M2.3a: add workspace interaction controller`)
+- Mini-milestone: M2.4 - shared premium camera speed (complete; ready to commit)
+- Latest known-good commit: `aae2b4a` (`M2.3b: integrate visible Engine editor mode`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -41,16 +41,23 @@
 - Added real viewport, Outliner and Details panels, functional show/hide/reset controls, split dragging and independent atomic layout persistence.
 - Kept Content Browser, menus and tools unexposed until their backends exist.
 - Removed Aquarium telemetry and AI scenario/planner identity from Engine Mode; panels now show generic scene, renderer and camera data.
+- Added a shared logarithmic camera-speed model spanning `0.0001` through `100000` with cadence-sensitive wheel momentum.
+- Routed wheel events by actual target: console and scroll panels retain priority, while only the real DX12 viewport changes camera speed.
+- Added a code-native camera control and anchored non-modal direct-entry popup in both AI Details and Engine modes.
+- Added strict full-number parsing, Enter commit, Escape cancel, outside-click dismissal and synchronized direct/wheel values.
+- Preserved the tuned default movement response while scaling acceleration so high selected speeds are physically reachable.
+- Forced parent composition while the popup/feedback is active so D2D controls remain above the DX12 scene.
 
 ## Next action
 
-Commit and push M2.3b, then implement the shared premium camera-speed model, viewport popup and navigation integration.
+Commit and push M2.4, then implement the first functional editor command/menu/toolbar navigation slice without exposing unfinished tools.
 
 ## Existing baseline findings
 
 - The active single-HWND composite path is intentional and conflicts with the older `validate_ace_aq3d11.ps1` assertion that demands the legacy child-HWND path by default.
 - `validate_ace_perf3.ps1` expects an older exact timing-reset marker; current code records real timing through newer paths.
 - `validate_ace_clean0.ps1` detects one legacy demo string containing `ACE shell backend placeholder`; remove it in a dedicated cleanup mini-milestone.
+- `validate_ace_aq3d12.ps1` still expects its historical bounded-grid markers inside `AceShellUi.cpp`; the grid moved into the renderer path, so the first four route checks pass and the stale source-location assertion fails.
 - Compiler-dependent validation scripts require the Visual Studio developer environment; this is an invocation concern, not a source failure.
 - User telemetry shows raw renderer throughput well above presentation rate; editor/UI cadence remains the main performance target.
 
@@ -83,3 +90,5 @@ Commit and push M2.3b, then implement the shared premium camera-speed model, vie
 - `validate_ace_engine_mode_shell.ps1`: PASS (12 route, composition, persistence, input and exposure checks, `/W4 /WX`).
 - M2.3b workspace/text/panel regressions, hidden Debug executable smoke start, MSBuild Debug/Release and CMake Debug: PASS.
 - User visual smoke test confirmed the visible editor layout and splitter resize behavior; requested telemetry/scenario cleanup is included in this checkpoint.
+- `validate_ace_camera_speed.ps1`: PASS (32 warning-as-error model, routing, popup and reachable-speed checks).
+- M2.4 `validate_ace_engine_mode_shell.ps1`, hidden Debug startup smoke, MSBuild Debug/Release and CMake Debug: PASS.

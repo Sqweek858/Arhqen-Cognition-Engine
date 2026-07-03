@@ -19,6 +19,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_DEBUG=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;dcomp.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><Optimization>MaxSpeed</Optimization><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_RELEASE=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;dcomp.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Viewport\AceCameraSpeedModel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Input\AceInputRouter.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Commands\AceCommandRegistry.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Transactions\AceTransaction.h" />
@@ -178,6 +179,7 @@
     <ClCompile Include="Private\Editor\Workspace\AceEditorWorkspaceLayout.cpp" />
     <ClCompile Include="Private\Editor\Workspace\AceEditorWorkspaceGeometry.cpp" />
     <ClCompile Include="Private\Editor\Workspace\AceEditorWorkspaceController.cpp" />
+    <ClCompile Include="Private\Editor\Viewport\AceCameraSpeedModel.cpp" />
     <ClCompile Include="Private\Renderer\Core\AceRenderer.cpp" />
     <ClCompile Include="Private\Renderer\Scene\AceRenderScene.cpp" />
     <ClCompile Include="Private\Renderer\Scene\AceAquariumGpuViewportRenderer.cpp" />

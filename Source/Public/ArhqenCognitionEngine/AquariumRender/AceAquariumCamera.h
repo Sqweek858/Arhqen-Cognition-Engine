@@ -61,6 +61,7 @@ namespace ace::aquarium_render
 
         void SetPosition(AceAqVec3 position);
         void SetYawPitch(float yawRadians, float pitchRadians);
+        void SetMoveSpeed(float unitsPerSecond);
 
         static AceAqVec3 WorldUp();
 

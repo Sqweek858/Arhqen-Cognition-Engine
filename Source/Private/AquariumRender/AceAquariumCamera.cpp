@@ -112,6 +112,20 @@ namespace ace::aquarium_render
         movementVelocity_ = {};
     }
 
+    void AceAquariumRealCamera::SetMoveSpeed(float unitsPerSecond)
+    {
+        constexpr float kMinimumMoveSpeed = 0.0001f;
+        constexpr float kMaximumMoveSpeed = 100000.0f;
+        moveSpeed_ = std::isfinite(unitsPerSecond) ?
+            std::clamp(unitsPerSecond, kMinimumMoveSpeed, kMaximumMoveSpeed) : 5.25f;
+
+        const float currentVelocity = Length(movementVelocity_);
+        if (currentVelocity > moveSpeed_)
+        {
+            movementVelocity_ = Mul(movementVelocity_, moveSpeed_ / currentVelocity);
+        }
+    }
+
     AceAqVec3 AceAquariumRealCamera::WorldUp()
     {
         return { 0.0f, 1.0f, 0.0f };
@@ -181,7 +195,12 @@ namespace ace::aquarium_render
 
             if (hasMovementImpulse)
             {
-                movementVelocity_ = Add(movementVelocity_, Mul(movement, movementAcceleration_ * step));
+                // Preserve the tuned default response while allowing the editor
+                // speed range to actually reach values above the old 5.25 cap.
+                // A fixed acceleration would asymptotically stall near 6 m/s no
+                // matter whether the user selected 100 or 100000.
+                const float accelerationScale = std::max(1.0f, moveSpeed_ / 5.25f);
+                movementVelocity_ = Add(movementVelocity_, Mul(movement, movementAcceleration_ * accelerationScale * step));
             }
 
             const float damping = hasMovementImpulse ? movementDamping_ : movementBrakingDamping_;

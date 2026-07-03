@@ -112,3 +112,14 @@
 - Kept Content Browser and unavailable editor commands hidden rather than presenting inert UE-shaped controls.
 - Removed Aquarium telemetry and AI scenario/planner labels from Engine Mode after visual smoke feedback.
 - Added strict shell-integration checks and a real hidden Debug executable startup smoke test.
+
+## 2026-07-03 - M2.4 premium camera speed
+
+- Added a frame-independent logarithmic camera-speed model covering `0.0001` through `100000`.
+- Wheel cadence now shapes momentum: isolated notches stay precise while rapid same-direction impulses accelerate smoothly.
+- Preserved scroll ownership for logs, panels and popups before routing unhandled wheel input to the real DX12 viewport.
+- Added the same code-native camera control to AI Details and Engine Mode, with immediate numeric and logarithmic-bar feedback.
+- Added an anchored direct-entry popup with strict parsing, clipboard editing, Enter commit, Escape cancel and outside-click dismissal.
+- Kept D2D popup layers above DX12 by integrating them with the existing parent-composition overlay policy and retained dirty layer.
+- Scaled camera acceleration above the tuned default so high requested speed values affect actual travel rather than only the UI.
+- Added 32 warning-as-error checks plus Debug, Release, CMake and hidden-startup gates.

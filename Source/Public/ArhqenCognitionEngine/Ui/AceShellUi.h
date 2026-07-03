@@ -57,6 +57,7 @@
 #include "ArhqenCognitionEngine/Ui/Core/AceUiStyleSet.h"
 #include "ArhqenCognitionEngine/Ui/Core/AcePanelResizePolicy.h"
 #include "ArhqenCognitionEngine/Editor/Workspace/AceEditorWorkspaceController.h"
+#include "ArhqenCognitionEngine/Editor/Viewport/AceCameraSpeedModel.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DDrawCommandBuffer.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DUiDebugOverlay.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DAquariumTelemetryWidgets.h"
@@ -191,6 +192,17 @@ namespace am::ui
         void renderAquariumScrollbar(D2DRenderContext& ctx, AquariumScrollPanel& scroll);
         void clampAquariumScroll(AquariumScrollPanel& scroll);
         bool handleAquariumWheel(float x, float y, int wheelDelta);
+        bool handleCameraSpeedWheel(float x, float y, int wheelDelta);
+        bool handleCameraSpeedMouseDown(D2DRenderContext& ctx, float x, float y);
+        bool handleCameraSpeedMouseUp(D2DRenderContext& ctx, float x, float y);
+        bool handleCameraSpeedMouseMove(D2DRenderContext& ctx, float x, float y);
+        bool handleCameraSpeedChar(WPARAM wParam);
+        bool handleCameraSpeedKeyDown(WPARAM wParam, const D2DKeyboardState& keyboard);
+        void openCameraSpeedPopup();
+        void closeCameraSpeedPopup(bool commit);
+        bool commitCameraSpeedText();
+        void renderCameraSpeedControl(D2DRenderContext& ctx, UiRect viewportRect);
+        std::wstring formatCameraSpeed(double speed) const;
         bool beginAquariumScrollbarDrag(float x, float y);
         bool updateAquariumScrollbarDrag(float x, float y);
         void endAquariumScrollbarDrag();
@@ -366,6 +378,7 @@ namespace am::ui
         D2DUiDebugOverlay uiDebugOverlay_{};
         D2DAquariumTelemetryWidgets aquariumTelemetryWidgets_{};
         am::editor::EditorWorkspaceController engineWorkspaceController_{};
+        am::editor::CameraSpeedModel cameraSpeedModel_{};
         std::uint64_t aceUi5TextClampCount_ = 0;
         std::uint64_t aceUi6RetainedLayoutFrameCount_ = 0;
         std::uint64_t aceUi7DrawCommandFrameCount_ = 0;
@@ -379,6 +392,13 @@ namespace am::ui
         UiRect engineLogOverlayInputRect_{};
         AquariumScrollPanel engineLogOverlayScroll_{};
         D2DTextInput engineLogOverlayInput_{};
+        D2DTextInput cameraSpeedInput_{};
+        UiRect cameraSpeedButtonRect_{};
+        UiRect cameraSpeedPopupRect_{};
+        UiRect cameraSpeedInputRect_{};
+        bool cameraSpeedPopupOpen_ = false;
+        bool cameraSpeedInputFocused_ = false;
+        float cameraSpeedFeedbackSeconds_ = 0.0f;
         bool engineLogOverlayInputFocused_ = false;
         bool engineLogTextFocused_ = false;
         bool engineLogTextSelecting_ = false;

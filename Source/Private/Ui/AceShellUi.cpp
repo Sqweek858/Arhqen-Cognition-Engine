@@ -30,6 +30,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
+#include <stdexcept>
 #include <sstream>
 #include <cwctype>
 #include <tuple>
@@ -434,6 +435,11 @@ namespace am::ui
         layoutProfilePath_ = std::move(path);
     }
 
+    double aceMonotonicSeconds()
+    {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
     void AceShellUi::setVsyncEnabled(bool enabled)
     {
         uiVsyncEnabled_ = enabled;
@@ -836,8 +842,21 @@ namespace am::ui
 
                 if (environmentOpen_ && environmentModalRect_.contains(static_cast<float>(p.x), static_cast<float>(p.y)))
                 {
-                    handleAquariumWheel(static_cast<float>(p.x), static_cast<float>(p.y), wheel);
-                    invalidateAquariumChrome();
+                    const float x = static_cast<float>(p.x);
+                    const float y = static_cast<float>(p.y);
+                    if (cameraSpeedPopupOpen_ && cameraSpeedPopupRect_.contains(x, y))
+                    {
+                        // The direct-entry popup is a modal wheel barrier. A
+                        // wheel over it must never leak into the viewport.
+                    }
+                    else if (handleAquariumWheel(x, y, wheel))
+                    {
+                        invalidateAquariumChrome();
+                    }
+                    else if (handleCameraSpeedWheel(x, y, wheel))
+                    {
+                        invalidateRect(inflateRect(cameraSpeedPopupOpen_ ? cameraSpeedPopupRect_ : cameraSpeedButtonRect_, 12.0f));
+                    }
                     if (handled) { *handled = true; }
                     return 0;
                 }
@@ -982,6 +1001,17 @@ namespace am::ui
         {
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
+
+            if (environmentOpen_)
+            {
+                auto ctx = makeContext();
+                if (handleCameraSpeedMouseDown(ctx, x, y))
+                {
+                    invalidateRect(inflateRect(cameraSpeedPopupOpen_ ? cameraSpeedPopupRect_ : cameraSpeedButtonRect_, 12.0f));
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+            }
 
             if (engineLogOverlayVisible_)
             {
@@ -1219,6 +1249,16 @@ namespace am::ui
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
 
+            if (cameraSpeedPopupOpen_)
+            {
+                auto ctx = makeContext();
+                if (handleCameraSpeedMouseUp(ctx, x, y))
+                {
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+            }
+
             if (engineEditorModeActive_ && engineWorkspaceController_.draggingSplitter())
             {
                 std::string error;
@@ -1336,6 +1376,17 @@ namespace am::ui
             mouseX_ = x;
             mouseY_ = y;
             cyberBackground_.setMouse(x, y);
+
+            if (cameraSpeedPopupOpen_)
+            {
+                auto ctx = makeContext();
+                if (handleCameraSpeedMouseMove(ctx, x, y))
+                {
+                    invalidateRect(inflateRect(cameraSpeedPopupRect_, 8.0f));
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+            }
 
             if (aquariumSingleHwndMouseLookActive_ || aquariumSingleHwndMouseCaptured_)
             {
@@ -1471,6 +1522,12 @@ namespace am::ui
             return TRUE;
 
         case WM_CHAR:
+            if (cameraSpeedPopupOpen_ && cameraSpeedInputFocused_ && handleCameraSpeedChar(wParam))
+            {
+                invalidateRect(inflateRect(cameraSpeedPopupRect_, 8.0f));
+                if (handled) { *handled = true; }
+                return 0;
+            }
             if (environmentOpen_ && aquarium3DModeActive_ &&
                 !(engineLogOverlayVisible_ && engineLogOverlayInputFocused_))
             {
@@ -1533,6 +1590,13 @@ namespace am::ui
         case WM_KEYDOWN:
         {
             const auto keyboard = D2DKeyboardState::current();
+
+            if (cameraSpeedPopupOpen_ && handleCameraSpeedKeyDown(wParam, keyboard))
+            {
+                invalidateRect(inflateRect(cameraSpeedPopupOpen_ ? cameraSpeedPopupRect_ : cameraSpeedButtonRect_, 10.0f));
+                if (handled) { *handled = true; }
+                return 0;
+            }
 
             if (engineEditorModeActive_ && wParam == VK_ESCAPE && engineWorkspaceController_.draggingSplitter())
             {
@@ -2979,6 +3043,11 @@ namespace am::ui
         };
 
         dynamicRect = unite(dynamicRect, aquariumTelemetryOverlayRect_);
+        dynamicRect = unite(dynamicRect, cameraSpeedButtonRect_);
+        if (cameraSpeedPopupOpen_)
+        {
+            dynamicRect = unite(dynamicRect, cameraSpeedPopupRect_);
+        }
         if (engineLogOverlayVisible_)
         {
             dynamicRect = unite(dynamicRect, engineLogOverlayRect_);
@@ -3014,6 +3083,7 @@ namespace am::ui
         {
             renderAquariumViewportHudLayer(ctx, viewportSurface, snapshot);
         }
+        renderCameraSpeedControl(ctx, viewportSurface);
         renderEngineLogOverlay(ctx);
         ctx.target->PopAxisAlignedClip();
         return true;
@@ -3358,6 +3428,7 @@ namespace am::ui
             aquariumManualTouchRect_,
             aquariumManualConsumeRect_,
             aquariumManualPushRect_,
+            cameraSpeedButtonRect_,
             aquariumLeftResizeHandleRect_,
             aquariumRightResizeHandleRect_
         };
@@ -3407,6 +3478,7 @@ namespace am::ui
             aquariumManualTouchRect_,
             aquariumManualConsumeRect_,
             aquariumManualPushRect_,
+            cameraSpeedButtonRect_,
             aquariumLeftResizeHandleRect_,
             aquariumRightResizeHandleRect_
         };
@@ -3457,6 +3529,11 @@ namespace am::ui
         }
 
         if (engineLogOverlayVisible_ && engineLogOverlayRect_.contains(x, y))
+        {
+            return true;
+        }
+
+        if (cameraSpeedPopupOpen_ && cameraSpeedPopupRect_.contains(x, y))
         {
             return true;
         }
@@ -4561,26 +4638,34 @@ namespace am::ui
 
     AceShellUi::AquariumScrollPanel* AceShellUi::activeAquariumScrollPanelAt(float x, float y)
     {
-        AquariumScrollPanel* panels[] =
+        auto hitScrollable = [x, y](AquariumScrollPanel& panel) -> AquariumScrollPanel*
         {
-            &engineLogOverlayScroll_,
-            &aquariumLogScroll_,
-            &aquarium3DLogsScroll_,
-            &aquarium3DDetailsScroll_,
-            &aquariumContentScroll_
+            if (panel.contentHeight <= panel.viewportHeight + 1.0f)
+            {
+                return nullptr;
+            }
+            return panel.thumb.contains(x, y) || panel.track.contains(x, y) || panel.viewport.contains(x, y)
+                ? &panel : nullptr;
         };
 
-        for (auto* panel : panels)
+        // Never route through stale rectangles left by another mode. A hidden
+        // panel is not a wheel target merely because it existed last frame.
+        if (engineLogOverlayVisible_)
         {
-            if (panel->contentHeight <= panel->viewportHeight + 1.0f)
-            {
-                continue;
-            }
+            if (auto* panel = hitScrollable(engineLogOverlayScroll_)) return panel;
+        }
 
-            if (panel->thumb.contains(x, y) || panel->track.contains(x, y) || panel->viewport.contains(x, y))
-            {
-                return panel;
-            }
+        if (aquarium3DModeActive_ && !engineEditorModeActive_)
+        {
+            if (aquariumLogsPanelVisible_)
+                if (auto* panel = hitScrollable(aquarium3DLogsScroll_)) return panel;
+            if (aquariumDetailsPanelVisible_)
+                if (auto* panel = hitScrollable(aquarium3DDetailsScroll_)) return panel;
+        }
+        else if (!aquarium3DModeActive_)
+        {
+            if (auto* panel = hitScrollable(aquariumLogScroll_)) return panel;
+            if (auto* panel = hitScrollable(aquariumContentScroll_)) return panel;
         }
 
         return nullptr;
@@ -5274,6 +5359,7 @@ namespace am::ui
         if (aquariumEmbeddedViewportVisible_)
         {
             renderAquariumDx12ViewportSurface(ctx, aquariumEmbeddedViewportRect_, snapshot.debugTruthEnabled);
+            renderCameraSpeedControl(ctx, aquariumEmbeddedViewportRect_);
         }
 
         const auto primitives = aquariumSceneAdapter_.BuildPrimitives(aquariumController_, false);
@@ -5379,6 +5465,7 @@ namespace am::ui
         // the bottom-left corner and then acting shocked when the log console
         // docks there too.
         renderAquariumViewportHudLayer(ctx, viewportSurface, snapshot);
+        renderCameraSpeedControl(ctx, viewportSurface);
 
         D2DGlassMaterial topGlass;
         topGlass.radius = 0.0f;
@@ -7244,6 +7331,7 @@ namespace am::ui
         }
 
         return engineLogOverlayVisible_ ||
+            cameraSpeedPopupOpen_ ||
             commandPalette_.active() ||
             settingsOpen_ ||
             diagnostics_.visible() ||
@@ -7358,6 +7446,256 @@ namespace am::ui
         aquariumD2DCompositionHudCacheValid_ = false;
         aquariumD2DCompositionHudAttached_ = false;
         return true;
+    }
+
+    std::wstring AceShellUi::formatCameraSpeed(double speed) const
+    {
+        std::wostringstream out;
+        if (speed < 0.01 || speed >= 10000.0)
+        {
+            out << std::scientific << std::setprecision(4) << speed;
+        }
+        else
+        {
+            out << std::fixed << std::setprecision(speed < 1.0 ? 4 : (speed < 100.0 ? 2 : 1)) << speed;
+        }
+
+        std::wstring result = out.str();
+        const auto exponent = result.find_first_of(L"eE");
+        if (exponent == std::wstring::npos)
+        {
+            const auto dot = result.find(L'.');
+            if (dot != std::wstring::npos)
+            {
+                while (!result.empty() && result.back() == L'0') result.pop_back();
+                if (!result.empty() && result.back() == L'.') result.pop_back();
+            }
+        }
+        return result;
+    }
+
+    bool AceShellUi::handleCameraSpeedWheel(float x, float y, int wheelDelta)
+    {
+        if (!isAquariumSingleHwndViewportPoint(x, y) ||
+            shouldAquariumViewportInputDeferToOverlay(x, y))
+        {
+            return false;
+        }
+
+        const double speed = cameraSpeedModel_.applyWheelDelta(wheelDelta, aceMonotonicSeconds());
+        aquariumSingleHwndCamera_.SetMoveSpeed(static_cast<float>(speed));
+        cameraSpeedFeedbackSeconds_ = 1.15f;
+        aquariumEmbeddedViewportStatus_ = L"Camera speed " + formatCameraSpeed(speed) + L" m/s";
+        requestParentCompositedViewportHold(10u, L"camera-speed-wheel");
+        return true;
+    }
+
+    void AceShellUi::openCameraSpeedPopup()
+    {
+        cameraSpeedPopupOpen_ = true;
+        cameraSpeedInputFocused_ = true;
+        cameraSpeedInput_.replaceAllText(formatCameraSpeed(cameraSpeedModel_.speed()));
+        cameraSpeedInput_.selectAll();
+        requestParentCompositedViewportHold(30u, L"camera-speed-popup-open");
+        SetFocus(parent_);
+    }
+
+    void AceShellUi::closeCameraSpeedPopup(bool commit)
+    {
+        if (commit && !commitCameraSpeedText())
+        {
+            return;
+        }
+        cameraSpeedPopupOpen_ = false;
+        cameraSpeedInputFocused_ = false;
+        cameraSpeedInput_.setFocused(false);
+        requestParentCompositedViewportHold(12u, L"camera-speed-popup-close");
+    }
+
+    bool AceShellUi::commitCameraSpeedText()
+    {
+        std::wstring text = cameraSpeedInput_.text();
+        const auto first = text.find_first_not_of(L" \t\r\n");
+        const auto last = text.find_last_not_of(L" \t\r\n");
+        if (first == std::wstring::npos)
+        {
+            cameraSpeedInput_.selectAll();
+            showToast(L"Camera speed", L"Enter a value from 0.0001 to 100000.", D2DToastKind::Error);
+            return false;
+        }
+        text = text.substr(first, last - first + 1);
+
+        try
+        {
+            std::size_t consumed = 0;
+            const double parsed = std::stod(text, &consumed);
+            if (consumed != text.size() || !std::isfinite(parsed))
+            {
+                throw std::invalid_argument("camera speed");
+            }
+            const double speed = cameraSpeedModel_.setSpeed(parsed);
+            aquariumSingleHwndCamera_.SetMoveSpeed(static_cast<float>(speed));
+            cameraSpeedFeedbackSeconds_ = 1.15f;
+            aquariumEmbeddedViewportStatus_ = L"Camera speed " + formatCameraSpeed(speed) + L" m/s";
+            return true;
+        }
+        catch (const std::exception&)
+        {
+            cameraSpeedInput_.selectAll();
+            showToast(L"Camera speed", L"Use a finite decimal value from 0.0001 to 100000.", D2DToastKind::Error);
+            return false;
+        }
+    }
+
+    bool AceShellUi::handleCameraSpeedMouseDown(D2DRenderContext& ctx, float x, float y)
+    {
+        if (cameraSpeedButtonRect_.contains(x, y))
+        {
+            if (cameraSpeedPopupOpen_) closeCameraSpeedPopup(false);
+            else openCameraSpeedPopup();
+            return true;
+        }
+
+        if (!cameraSpeedPopupOpen_)
+        {
+            return false;
+        }
+
+        if (cameraSpeedInputRect_.contains(x, y))
+        {
+            cameraSpeedInputFocused_ = true;
+            cameraSpeedInput_.setFocused(true);
+            cameraSpeedInput_.onMouseDown(ctx, x, y);
+            return true;
+        }
+
+        if (cameraSpeedPopupRect_.contains(x, y))
+        {
+            return true;
+        }
+
+        closeCameraSpeedPopup(false);
+        return false;
+    }
+
+    bool AceShellUi::handleCameraSpeedMouseUp(D2DRenderContext& ctx, float x, float y)
+    {
+        return cameraSpeedInput_.onMouseUp(ctx, x, y);
+    }
+
+    bool AceShellUi::handleCameraSpeedMouseMove(D2DRenderContext& ctx, float x, float y)
+    {
+        return cameraSpeedInput_.onMouseMove(ctx, x, y);
+    }
+
+    bool AceShellUi::handleCameraSpeedChar(WPARAM wParam)
+    {
+        return cameraSpeedInput_.onChar(wParam);
+    }
+
+    bool AceShellUi::handleCameraSpeedKeyDown(WPARAM wParam, const D2DKeyboardState& keyboard)
+    {
+        if (wParam == VK_ESCAPE)
+        {
+            closeCameraSpeedPopup(false);
+            return true;
+        }
+        if (wParam == VK_RETURN && !keyboard.shift)
+        {
+            closeCameraSpeedPopup(true);
+            return true;
+        }
+        if (keyboard.ctrl && wParam == 'C')
+        {
+            std::string ignored;
+            cameraSpeedInput_.copySelectionToClipboard(parent_, &ignored);
+            return true;
+        }
+        if (keyboard.ctrl && wParam == 'X')
+        {
+            std::string ignored;
+            cameraSpeedInput_.cutSelectionToClipboard(parent_, &ignored);
+            return true;
+        }
+        if (keyboard.ctrl && wParam == 'V')
+        {
+            std::string ignored;
+            cameraSpeedInput_.pasteFromClipboard(parent_, &ignored);
+            return true;
+        }
+        return cameraSpeedInput_.onKeyDown(wParam, keyboard.ctrl, keyboard.shift);
+    }
+
+    void AceShellUi::renderCameraSpeedControl(D2DRenderContext& ctx, UiRect viewportRect)
+    {
+        if (!ctx.target || viewportRect.empty())
+        {
+            cameraSpeedButtonRect_ = makeUiRect(0, 0, 0, 0);
+            cameraSpeedPopupRect_ = makeUiRect(0, 0, 0, 0);
+            cameraSpeedInputRect_ = makeUiRect(0, 0, 0, 0);
+            return;
+        }
+
+        constexpr float margin = 14.0f;
+        constexpr float buttonWidth = 166.0f;
+        constexpr float buttonHeight = 38.0f;
+        cameraSpeedButtonRect_ = makeUiRect(
+            viewportRect.right - margin - buttonWidth,
+            viewportRect.top + margin,
+            viewportRect.right - margin,
+            viewportRect.top + margin + buttonHeight);
+
+        const bool hovered = cameraSpeedButtonRect_.contains(mouseX_, mouseY_);
+        D2DWidgetUtils::fillRounded(ctx, cameraSpeedButtonRect_, 8.0f,
+            hovered || cameraSpeedPopupOpen_ ? ctx.brushes.panelSoft : ctx.brushes.panelElevated,
+            cameraSpeedPopupOpen_ ? ctx.brushes.accent : ctx.brushes.border, 1.0f);
+
+        // Code-native camera glyph: crisp at every DPI and no font-fallback gamble.
+        const UiRect body = makeUiRect(cameraSpeedButtonRect_.left + 10.0f, cameraSpeedButtonRect_.top + 11.0f,
+            cameraSpeedButtonRect_.left + 31.0f, cameraSpeedButtonRect_.top + 27.0f);
+        D2DWidgetUtils::fillRounded(ctx, body, 3.0f, ctx.brushes.accentBlue);
+        D2DWidgetUtils::fillRounded(ctx, makeUiRect(body.left + 4.0f, body.top - 3.0f, body.left + 12.0f, body.top + 2.0f),
+            2.0f, ctx.brushes.accentBlue);
+        if (ctx.brushes.panelDeep)
+            ctx.target->FillEllipse(D2D1::Ellipse(D2D1::Point2F(body.left + 13.0f, body.top + 8.0f), 4.0f, 4.0f), ctx.brushes.panelDeep);
+
+        D2DTextLayoutFoundation::Draw(ctx, L"Speed  " + formatCameraSpeed(cameraSpeedModel_.speed()), FontRole::Small,
+            makeUiRect(body.right + 8.0f, cameraSpeedButtonRect_.top, cameraSpeedButtonRect_.right - 8.0f, cameraSpeedButtonRect_.bottom),
+            ctx.brushes.text, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+        const float progressWidth = static_cast<float>(cameraSpeedModel_.normalizedLogPosition()) * (cameraSpeedButtonRect_.width() - 16.0f);
+        D2DWidgetUtils::fillRounded(ctx,
+            makeUiRect(cameraSpeedButtonRect_.left + 8.0f, cameraSpeedButtonRect_.bottom - 3.0f,
+                cameraSpeedButtonRect_.left + 8.0f + progressWidth, cameraSpeedButtonRect_.bottom - 1.0f),
+            1.0f, ctx.brushes.accent);
+
+        if (!cameraSpeedPopupOpen_)
+        {
+            cameraSpeedPopupRect_ = makeUiRect(0, 0, 0, 0);
+            cameraSpeedInputRect_ = makeUiRect(0, 0, 0, 0);
+            return;
+        }
+
+        constexpr float popupWidth = 300.0f;
+        constexpr float popupHeight = 116.0f;
+        float popupTop = cameraSpeedButtonRect_.bottom + 8.0f;
+        if (popupTop + popupHeight > viewportRect.bottom - margin)
+            popupTop = cameraSpeedButtonRect_.top - popupHeight - 8.0f;
+        const float popupLeft = std::max(viewportRect.left + margin, cameraSpeedButtonRect_.right - popupWidth);
+        cameraSpeedPopupRect_ = makeUiRect(popupLeft, popupTop, popupLeft + popupWidth, popupTop + popupHeight);
+        cameraSpeedInputRect_ = makeUiRect(popupLeft + 12.0f, popupTop + 38.0f, popupLeft + popupWidth - 12.0f, popupTop + 80.0f);
+
+        D2DWidgetUtils::fillRounded(ctx, cameraSpeedPopupRect_, 10.0f, ctx.brushes.panelElevated, ctx.brushes.accent, 1.0f);
+        D2DTextLayoutFoundation::Draw(ctx, L"Camera speed (m/s)", FontRole::Small,
+            makeUiRect(popupLeft + 14.0f, popupTop + 8.0f, popupLeft + popupWidth - 14.0f, popupTop + 34.0f),
+            ctx.brushes.text, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        cameraSpeedInput_.setRect(cameraSpeedInputRect_);
+        cameraSpeedInput_.setPlaceholder(L"0.0001 - 100000");
+        cameraSpeedInput_.setFocused(cameraSpeedInputFocused_);
+        cameraSpeedInput_.render(ctx);
+        D2DTextLayoutFoundation::Draw(ctx, L"Enter apply  |  Esc cancel  |  wheel adapts to cadence", FontRole::Small,
+            makeUiRect(popupLeft + 14.0f, popupTop + 84.0f, popupLeft + popupWidth - 14.0f, popupTop + 108.0f),
+            ctx.brushes.muted, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     }
 
     bool AceShellUi::renderAquariumD2DCompositionHud(
@@ -9521,6 +9859,17 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
 
         const float x = static_cast<float>(p.x);
         const float y = static_cast<float>(p.y);
+
+        if (cameraSpeedPopupOpen_ && cameraSpeedInputRect_.contains(x, y))
+        {
+            SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
+            return;
+        }
+        if (cameraSpeedButtonRect_.contains(x, y))
+        {
+            SetCursor(LoadCursorW(nullptr, IDC_HAND));
+            return;
+        }
 
         if (engineEditorModeActive_)
         {
