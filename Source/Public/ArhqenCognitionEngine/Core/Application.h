@@ -3,6 +3,9 @@
 #include "ArhqenCognitionEngine/Core/AppConfig.h"
 #include "ArhqenCognitionEngine/Core/Assets/AceAssetRegistry.h"
 #include "ArhqenCognitionEngine/Core/Assets/AceAssetDirectoryWatcher.h"
+#include "ArhqenCognitionEngine/Core/Assets/AceAssetReferences.h"
+#include "ArhqenCognitionEngine/Editor/Assets/AceAssetOperationService.h"
+#include "ArhqenCognitionEngine/Editor/Transactions/AceTransaction.h"
 #include "ArhqenCognitionEngine/Core/ExitCode.h"
 #include "ArhqenCognitionEngine/Core/Logger.h"
 #include "ArhqenCognitionEngine/Core/RuntimeClock.h"
@@ -41,6 +44,9 @@ namespace am::core
         TaskQueue tasks_;
         am::core::assets::AssetRegistry assetRegistry_;
         am::core::assets::AssetDirectoryWatcher assetDirectoryWatcher_;
+        am::core::assets::AssetReferenceIndex assetReferences_;
+        am::editor::transactions::TransactionManager editorTransactions_{};
+        am::editor::assets::AssetOperationService assetOperations_{};
         am::renderer::NativeWindow window_;
         am::renderer::Dx12Renderer renderer_;
         am::renderer::UiDrawList uiDrawList_;

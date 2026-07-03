@@ -163,3 +163,14 @@
 - Rejected collisions, root moves and moves into the source's own subtree before mutating live indexes.
 - Added a bounded bidirectional asset reference index with deduplication, deterministic queries and reference-aware delete eligibility.
 - Expanded the warning-as-error asset gate to 49 checks and passed all build configurations.
+
+## 2026-07-03 - M3.3b transactional asset operations
+
+- Added one Asset Operation Service for folder create/delete and asset rename, move, duplicate and delete.
+- Integrated every mutation with central Undo/Redo and stable registry identity remapping.
+- Added external byte-exact stash files for duplicate/delete redo and crash-start cleanup limited to owned extensions.
+- Refused referenced deletes before touching disk and restored GUID/outgoing references on undo.
+- Rejected unsafe names, collisions, root mutation, nonempty folder deletion and undo storage inside/above Content.
+- Fixed stable-ID archive spelling so case-folded `/game` keys serialize with the canonical `/Game` mount and survive restart.
+- Kept unimplemented Material creation out of both service and UI.
+- Added 35 warning-as-error operation checks plus full registry/transaction/build/runtime gates.

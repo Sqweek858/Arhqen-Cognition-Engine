@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.3a - identity-preserving moves and reference index (complete; ready to commit)
-- Latest known-good commit: `dd5453b` (`M3.2: add live asset watch and deltas`)
+- Mini-milestone: M3.3b - transactional filesystem asset operations (complete; ready to commit)
+- Latest known-good commit: `2988233` (`M3.3a: preserve asset identity and references`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -67,10 +67,16 @@
 - Added explicit moved deltas carrying GUID plus old/new virtual paths and persistence across the following physical rescan.
 - Added collision, root, self-subtree and invalid-destination rejection without partially publishing indexes or state.
 - Added a bounded bidirectional reference index with deterministic forward/reverse queries and delete guards.
+- Added a runtime Asset Operation Service for folder create/delete and asset rename, move, duplicate and delete.
+- Routed every operation through the central transaction history with functional Undo/Redo and identity-preserving registry updates.
+- Added external byte-exact undo stashes for duplicate/delete; owned stale files are cleaned without touching unrelated files or Content.
+- Delete refuses referenced assets before disk mutation, and undo restores file GUID plus outgoing reference edges.
+- Added strict display-name/collision/root/nonempty-folder checks and exact filesystem rollback when registry publication fails.
+- Kept Material creation unexposed until its real asset format/compiler/editor exist; no empty pseudo-material files are created.
 
 ## Next action
 
-Commit and push M3.3a, then implement filesystem-backed create/rename/move/duplicate/delete operations with undo storage and reference-checked deletion.
+Commit and push M3.3b, then build the Content Browser view/navigation/selection model over these real operations before exposing its D2D drawer.
 
 ## Existing baseline findings
 
@@ -120,3 +126,5 @@ Commit and push M3.3a, then implement filesystem-backed create/rename/move/dupli
 - M3.2 end-to-end application watch smoke logged both add/remove generations and restored Content to zero entries; all builds PASS.
 - Expanded Asset Registry/reference gate: PASS (49 checks including subtree moves, move deltas, collisions and bidirectional delete guards).
 - M3.3a MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_asset_operations.ps1`: PASS (35 filesystem, rollback, GUID, reference and Undo/Redo checks, `/W4 /WX`).
+- M3.3b registry/reference/transaction regressions, runtime external-undo/empty-Content smoke and all builds: PASS.

@@ -226,20 +226,26 @@ namespace am::core::assets
     bool AssetRegistry::saveStableIds(std::string* error) const
     {
         ArchiveWriter writer(kRegistrySchema, kRegistryVersion);
-        if (snapshot_.assets.size() > kMaximumAssets)
+        if (stableIdsByPathKey_.size() > kMaximumAssets)
         {
             fail(error, "Asset registry exceeds supported asset count");
             return false;
         }
-        writer.writeU32(static_cast<std::uint32_t>(snapshot_.assets.size()));
-        for (const auto& asset : snapshot_.assets)
+        std::vector<std::pair<std::string, Guid>> entries(stableIdsByPathKey_.begin(), stableIdsByPathKey_.end());
+        std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+        writer.writeU32(static_cast<std::uint32_t>(entries.size()));
+        for (const auto& [path, id] : entries)
         {
-            if (!writer.writeString(asset.path.string()))
+            // comparisonKey is intentionally case-folded, including `/game`.
+            // The virtual mount parser is intentionally strict and accepts only
+            // canonical `/Game`, so restore that spelling at the archive boundary.
+            const std::string serializedPath = path.starts_with("/game") ? "/Game" + path.substr(5) : path;
+            if (!writer.writeString(serializedPath))
             {
                 fail(error, "Asset registry path is invalid UTF-8");
                 return false;
             }
-            writer.writeGuid(asset.id);
+            writer.writeGuid(id);
         }
         return AtomicFile::write(stateFile_, writer.finish(), error);
     }
@@ -400,7 +406,7 @@ namespace am::core::assets
         sortGuids(delta.modified);
         sortGuids(delta.removed);
 
-        std::unordered_map<std::string, Guid> nextStableIds;
+        std::unordered_map<std::string, Guid> nextStableIds = stableIdsByPathKey_;
         std::unordered_map<std::string, std::size_t> nextPathIndexes;
         std::unordered_map<Guid, std::size_t, GuidHash> nextIdIndexes;
         nextStableIds.reserve(next.assets.size());
@@ -410,13 +416,25 @@ namespace am::core::assets
         {
             const auto& asset = next.assets[index];
             const std::string key = asset.path.comparisonKey();
-            if (!nextStableIds.emplace(key, asset.id).second ||
-                !nextPathIndexes.emplace(key, index).second ||
+            const auto stable = nextStableIds.find(key);
+            if (stable == nextStableIds.end()) nextStableIds.emplace(key, asset.id);
+            else if (stable->second != asset.id)
+            {
+                fail(error, "Content root contains conflicting stable asset identity");
+                return false;
+            }
+            if (!nextPathIndexes.emplace(key, index).second ||
                 !nextIdIndexes.emplace(asset.id, index).second)
             {
                 fail(error, "Content root contains duplicate asset identity or path");
                 return false;
             }
+        }
+
+        if (nextStableIds.size() > kMaximumAssets)
+        {
+            fail(error, "Asset registry stable identity table exceeds its bound");
+            return false;
         }
 
         snapshot_ = std::move(next);
@@ -524,20 +542,36 @@ namespace am::core::assets
         std::sort(next.folders.begin(), next.folders.end(), byPath);
         next.generation = snapshot_.generation + 1;
 
-        std::unordered_map<std::string, Guid> nextStable;
+        std::unordered_map<std::string, Guid> nextStable = stableIdsByPathKey_;
+        for (auto it = nextStable.begin(); it != nextStable.end();)
+        {
+            if (matchesPrefix(it->first, oldKey)) it = nextStable.erase(it);
+            else ++it;
+        }
         std::unordered_map<std::string, std::size_t> nextPathIndex;
         std::unordered_map<Guid, std::size_t, GuidHash> nextIdIndex;
         for (std::size_t index = 0; index < next.assets.size(); ++index)
         {
             const auto& asset = next.assets[index];
             const std::string key = asset.path.comparisonKey();
-            if (!nextStable.emplace(key, asset.id).second ||
-                !nextPathIndex.emplace(key, index).second ||
+            const auto stable = nextStable.find(key);
+            if (stable == nextStable.end()) nextStable.emplace(key, asset.id);
+            else if (stable->second != asset.id)
+            {
+                fail(error, "Asset registry move collides with reserved stable identity");
+                return false;
+            }
+            if (!nextPathIndex.emplace(key, index).second ||
                 !nextIdIndex.emplace(asset.id, index).second)
             {
                 fail(error, "Asset registry move produced duplicate identity");
                 return false;
             }
+        }
+        if (nextStable.size() > kMaximumAssets)
+        {
+            fail(error, "Asset registry move exceeds stable identity bound");
+            return false;
         }
 
         const auto oldSnapshot = snapshot_;

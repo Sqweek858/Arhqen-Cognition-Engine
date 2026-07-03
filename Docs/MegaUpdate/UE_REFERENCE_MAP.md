@@ -112,3 +112,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - `Editor/WorldBookmark/Private/WorldBookmark/Browser/FolderTreeItem.cpp` validates target folder paths and routes subtree renames through Asset Tools rather than raw filesystem calls.
 - `Editor/UnrealEd/Public/AssetDeleteModel.h` treats reference discovery as a required phase of deletion, not a cosmetic confirmation dialog.
 - ACE adaptation: registry remaps preserve GUIDs across file/folder moves and publish old/new paths. `AssetReferenceIndex` keeps forward and reverse edges so the next filesystem-operations slice can refuse unsafe deletion before touching disk.
+
+## M3.3b - filesystem asset operations
+
+- UE Asset Tools routes validated create/rename/duplicate operations through shared services rather than letting Content Browser widgets mutate files directly.
+- `Editor/UnrealEd/Public/AssetDeleteModel.h` separates reference discovery, user decision and actual deletion; unsafe deletion is not a raw filesystem action.
+- ACE adaptation: `AssetOperationService` is the only filesystem mutation boundary and records each completed action in `TransactionManager`. Duplicate/delete use exact external stashes, registry GUIDs survive undo/redo, and known reverse references block deletion before disk mutation. Material creation remains omitted until the real M6 format/compiler exists.

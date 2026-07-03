@@ -150,6 +150,13 @@ namespace am::core
         logger_.info("Asset Registry mounted /Game at " + contentRoot.string() +
             " assets=" + std::to_string(assetRegistry_.snapshot().assets.size()) +
             " folders=" + std::to_string(assetRegistry_.snapshot().folders.size()));
+        const auto assetUndoRoot = (repoRoot_ / "Build/Editor/AssetUndo").lexically_normal();
+        if (!assetOperations_.initialize(assetRegistry_, assetReferences_, editorTransactions_, assetUndoRoot, &assetRegistryError))
+        {
+            logger_.error("Asset Operation Service initialization failed: " + assetRegistryError);
+            return false;
+        }
+        logger_.info("Asset Operation Service initialized with external undo storage.");
         if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
         {
             logger_.error("Asset Directory Watcher initialization failed: " + assetRegistryError);
