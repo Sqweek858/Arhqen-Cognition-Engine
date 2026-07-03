@@ -207,3 +207,12 @@
 - Replaced hardcoded Details content with the selected entity's type, GUID, transform, visibility, lock and asset reference.
 - Added a transient six-entity editor preview world and synchronized its camera entity with the real viewport without polluting `Content/`.
 - Added 36 warning-as-error scene checks, expanded shell coverage to 33 checks and passed all build/runtime gates.
+
+## 2026-07-03 - M3.7a transactional scene transform lifecycle
+
+- Added a scene edit controller sharing the central editor transaction history used by asset operations.
+- Added transactional entity rename and direct transform mutation with locked/root validation.
+- Added interactive multi-entity transform begin/update/commit/cancel semantics modeled after UE viewport tracking boundaries.
+- Live drag updates create no history entries; mouse-up creates exactly one and Escape restores every pre-drag transform.
+- Deduplicated target IDs, rejected invalid targets before tracking and atomically rolled back partial invalid updates.
+- Added 26 warning-as-error lifecycle checks and passed scene regression plus all build configurations.

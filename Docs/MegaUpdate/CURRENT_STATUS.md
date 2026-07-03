@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.6 - scene/world foundation and real Outliner/Details (complete; ready to commit)
-- Latest known-good commit: `3ef9ed1` (`M3.5: add functional Content Browser drawer`)
+- Mini-milestone: M3.7a - transactional scene transform lifecycle (complete; ready to commit)
+- Latest known-good commit: `41bcf49` (`M3.6: add scene world and real Outliner`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -95,10 +95,15 @@
 - Replaced hardcoded Engine Outliner rows with the real hierarchy model, pointer selection, expand/collapse and bounded wheel scrolling.
 - Replaced hardcoded Details rows with selected entity label, kind, GUID, transform, visibility, lock and optional asset GUID.
 - The editor camera entity follows the live viewport camera while the transient preview world remains isolated from empty user Content.
+- Added a scene edit controller over the shared central transaction manager for rename and direct transform changes.
+- Added UE-style interactive transform tracking: begin, live multi-entity updates, one commit on release and exact cancel on Escape.
+- Interactive targets are deduplicated and root, missing or locked entities are rejected before a transaction starts.
+- Invalid multi-entity updates roll back every already-applied target atomically; no-op drags create no history entry.
+- Transform and rename Undo/Redo restore exact before/after values without per-frame history spam.
 
 ## Next action
 
-Commit and push M3.6, then begin M3.7 viewport object interaction: scene picking, shared selection, transform transaction controller and Move/Rotate/Scale gizmo foundations.
+Commit and push M3.7a, then implement M3.7b viewport picking and visible Move/Rotate/Scale gizmo interaction over this verified tracking lifecycle.
 
 ## Existing baseline findings
 
@@ -158,3 +163,5 @@ Commit and push M3.6, then begin M3.7 viewport object interaction: scene picking
 - `validate_ace_scene_world.ps1`: PASS (36 identity, hierarchy, transform, selection, search, archive, corruption and scale checks, `/W4 /WX`).
 - Scene hierarchy scale gate: 20,001 projected rows under five seconds PASS with indexed child lookup.
 - M3.6 expanded shell gate (33 checks), hidden six-entity editor-scene/empty-Content startup and all builds: PASS.
+- `validate_ace_scene_edit_controller.ps1`: PASS (26 rename, direct/multi transform, lock, atomic rollback, commit/cancel and Undo/Redo checks, `/W4 /WX`).
+- M3.7a full scene regression and MSBuild Debug/Release plus CMake Debug: PASS.

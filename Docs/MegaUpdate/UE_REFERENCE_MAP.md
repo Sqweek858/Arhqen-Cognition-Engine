@@ -138,3 +138,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - `Editor/UnrealEd/Private/EditorActor.cpp` routes attachment and label changes through validated editor operations; actor children are enumerated recursively for hierarchy actions.
 - `Editor/UnrealEd/Private/EditorActorFolders.cpp` maintains folder state as world/editor data and broadcasts hierarchy changes rather than deriving ownership from painted rows.
 - ACE adaptation: `SceneWorld` owns GUID entities and validated hierarchy, `SceneSelection` owns selection identity, and `SceneHierarchyModel` projects indexed children for the D2D Outliner. `.acescene` persistence uses ACE's bounded archive rather than serializing widget state. Details is a read-only projection in this slice; transform transactions/gizmos follow in M3.7.
+
+## M3.7a - interactive transform transactions
+
+- `Editor/UnrealEd/Public/EditorModeManager.h`, `MouseDeltaTracker.h` and `LevelEditorViewport.cpp` separate StartTracking, repeated InputDelta and TrackingStopped boundaries.
+- UE starts one transaction for a widget drag and finalizes it at tracking stop instead of transacting every mouse delta.
+- ACE adaptation: `SceneEditController` owns the same lifecycle over `SceneWorld`. It applies live multi-target values, records one before/after operation at commit, restores exact pre-drag values on cancel, and leaves paint/input/gizmo math for M3.7b.

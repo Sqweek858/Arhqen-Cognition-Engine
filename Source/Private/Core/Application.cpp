@@ -186,6 +186,11 @@ namespace am::core
         editorSceneHierarchy_.setExpanded(*editorFolder, true);
         editorSceneHierarchy_.setExpanded(*previewFolder, true);
         editorSceneHierarchy_.rebuild(editorScene_, editorSceneSelection_);
+        if (!editorSceneEdits_.initialize(editorScene_, editorSceneSelection_, editorTransactions_, &assetRegistryError))
+        {
+            logger_.error("Editor scene transaction controller initialization failed: " + assetRegistryError);
+            return false;
+        }
         logger_.info("Editor scene initialized entities=" + std::to_string(editorScene_.entityCount()));
         if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
         {

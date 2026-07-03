@@ -15,6 +15,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Assets\AceAssetOperationService.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\ContentBrowser\AceContentBrowserModel.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\ContentBrowser\AceContentBrowserController.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Scene\AceSceneEditController.h"><Filter></Filter></ClInclude>
     <Filter Include="" />
   </ItemGroup>
   <ItemGroup>
@@ -31,6 +32,7 @@
     <ClCompile Include="Private\Editor\Assets\AceAssetOperationService.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Editor\ContentBrowser\AceContentBrowserModel.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Editor\ContentBrowser\AceContentBrowserController.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Editor\Scene\AceSceneEditController.cpp"><Filter></Filter></ClCompile>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Core\AceRenderer.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceRenderScene.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceAquariumGpuViewportRenderer.h"><Filter></Filter></ClInclude>

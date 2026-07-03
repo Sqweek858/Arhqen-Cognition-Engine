@@ -8,6 +8,7 @@
 #include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserModel.h"
 #include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserController.h"
 #include "ArhqenCognitionEngine/Editor/Transactions/AceTransaction.h"
+#include "ArhqenCognitionEngine/Editor/Scene/AceSceneEditController.h"
 #include "ArhqenCognitionEngine/Core/ExitCode.h"
 #include "ArhqenCognitionEngine/Core/Logger.h"
 #include "ArhqenCognitionEngine/Core/Scene/AceSceneWorld.h"
@@ -55,6 +56,7 @@ namespace am::core
         am::core::scene::SceneWorld editorScene_{};
         am::core::scene::SceneSelection editorSceneSelection_{};
         am::core::scene::SceneHierarchyModel editorSceneHierarchy_{};
+        am::editor::scene::SceneEditController editorSceneEdits_{};
         am::renderer::NativeWindow window_;
         am::renderer::Dx12Renderer renderer_;
         am::renderer::UiDrawList uiDrawList_;
