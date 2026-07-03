@@ -157,7 +157,11 @@ namespace am::core
             return false;
         }
         logger_.info("Asset Operation Service initialized with external undo storage.");
-        contentBrowserModel_.synchronize(assetRegistry_.snapshot());
+        if (!contentBrowserController_.initialize(assetRegistry_, assetOperations_, contentBrowserModel_, &assetRegistryError))
+        {
+            logger_.error("Content Browser controller initialization failed: " + assetRegistryError);
+            return false;
+        }
         logger_.info("Content Browser model synchronized at /Game generation=" +
             std::to_string(contentBrowserModel_.synchronizedGeneration()));
         if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
@@ -221,6 +225,7 @@ namespace am::core
         const auto layoutProfilePath = (repoRoot_ / config_.getString("ui.layout.path", "Build/Ui/ace_clean0.layout")).lexically_normal();
         shellUi_.setLayoutProfilePath(layoutProfilePath);
         shellUi_.setVsyncEnabled(config_.getInt("ui.vsync", 0) != 0);
+        shellUi_.setContentBrowserController(&contentBrowserController_);
 
         if (!shellUi_.create(window_.hwnd(), window_.width(), window_.height(), &error))
         {
@@ -276,7 +281,7 @@ namespace am::core
                         " removed=" + std::to_string(deltaResult.removed.size()) +
                         " full=" + std::to_string(deltaResult.fullRescan ? 1 : 0));
                 }
-                contentBrowserModel_.synchronize(assetRegistry_.snapshot());
+                contentBrowserController_.synchronize();
                 assetChangesPending_ = false;
                 assetFullRescanPending_ = false;
                 assetChangeQuietSeconds_ = 0.0;

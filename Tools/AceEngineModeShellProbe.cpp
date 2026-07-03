@@ -46,8 +46,9 @@ int main()
         editorRender.find("snapshot.plannerName") == std::string::npos &&
         editorRender.find("World:") == std::string::npos,
         "engine_panels_do_not_expose_ai_scenario_identity");
-    check(editorRender.find("Content Browser") == std::string::npos,
-        "unfinished_content_browser_is_not_exposed");
+    check(editorRender.find("renderContentBrowser") != std::string::npos &&
+        header.find("ContentBrowserController* contentBrowserController_") != std::string::npos,
+        "content_browser_is_exposed_through_real_controller");
     check(editorRender.find("Scene") != std::string::npos && editorRender.find("Editor Camera") != std::string::npos &&
         editorRender.find("Move speed") != std::string::npos,
         "engine_panels_show_real_generic_scene_and_camera_data");
@@ -70,6 +71,7 @@ int main()
         "editor_owns_initialized_command_registry");
     check(shell.find("window.toggle_outliner") != std::string::npos &&
         shell.find("window.toggle_details") != std::string::npos &&
+        shell.find("window.toggle_content_browser") != std::string::npos &&
         shell.find("window.reset_layout") != std::string::npos,
         "window_menu_commands_are_real");
     check(shell.find("view.reset_camera") != std::string::npos &&
@@ -83,12 +85,40 @@ int main()
         "editor_shortcuts_use_context_and_repeat_policy");
     check(editorRender.find("renderEngineCommandSurface(ctx, topBarHeight)") != std::string::npos,
         "command_surface_paints_as_final_editor_overlay");
-    check(shell.find("commandIds = {\"window.toggle_outliner\", \"window.toggle_details\", \"window.reset_layout\"}") != std::string::npos &&
+    check(shell.find("commandIds = {\"window.toggle_outliner\", \"window.toggle_details\", \"window.toggle_content_browser\", \"window.reset_layout\"}") != std::string::npos &&
         shell.find("commandIds = {\"view.reset_camera\", \"view.camera_speed\", \"view.toggle_console\"}") != std::string::npos,
         "menus_expose_only_registered_backend_actions");
     check(shell.find("!engineOpenMenu_.empty() ||") != std::string::npos &&
         shell.find("editor-menu-open") != std::string::npos,
         "editor_menus_join_dx12_overlay_policy");
+    check(header.find("ContentBrowserController* contentBrowserController_") != std::string::npos &&
+        shell.find("setContentBrowserController") != std::string::npos,
+        "content_browser_uses_runtime_controller_boundary");
+    check(shell.find("KeyChord{VK_SPACE, Modifier::Control}") != std::string::npos &&
+        shell.find("toggleContentBrowser();") != std::string::npos,
+        "ctrl_space_toggles_content_browser_drawer");
+    check(shell.find("contentBrowserController_->createFolder(name)") != std::string::npos &&
+        shell.find("L\"New Folder\"") != std::string::npos,
+        "new_folder_action_is_real_and_visible");
+    check(shell.find("key == VK_F2") != std::string::npos &&
+        shell.find("renameSelection(name)") != std::string::npos,
+        "f2_inline_rename_reaches_asset_operations");
+    check(shell.find("contentBrowserSearchInput_.onChar") != std::string::npos &&
+        shell.find("model->setSearchText") != std::string::npos,
+        "content_browser_search_updates_model");
+    check(shell.find("model->setViewMode(ViewMode::Tiles)") != std::string::npos &&
+        shell.find("model->setViewMode(ViewMode::List)") != std::string::npos,
+        "content_browser_tile_and_list_modes_are_interactive");
+    check(shell.find("WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS") != std::string::npos &&
+        shell.find("MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS") != std::string::npos,
+        "content_browser_names_use_strict_unicode_conversion");
+    check(shell.find("compactToolbar = contentRect.width() < 760.0f") != std::string::npos &&
+        shell.find("bodyTop + 24.0f >= contentRect.bottom") != std::string::npos,
+        "content_browser_layout_handles_narrow_and_tiny_drawers");
+    check(editorRender.find("renderContentBrowser(ctx") < editorRender.find("renderEngineCommandSurface(ctx"),
+        "content_browser_paints_before_final_menu_overlay");
+    check(shell.find("New Material") == std::string::npos,
+        "unfinished_material_creation_is_not_exposed");
 
     std::cout << (failures == 0 ? "PASS|" : "FAIL|") << "ace_engine_mode_shell_probe\n";
     return failures == 0 ? 0 : 1;

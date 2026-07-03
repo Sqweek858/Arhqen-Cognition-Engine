@@ -44,6 +44,18 @@
 
 namespace
 {
+    std::string aceUtf8FromWide(std::wstring_view value)
+    {
+        if (value.empty()) return {};
+        const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+            static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+        if (length <= 0) return {};
+        std::string result(static_cast<std::size_t>(length), '\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+            result.data(), length, nullptr, nullptr) != length) return {};
+        return result;
+    }
+
     D2D1_COLOR_F aceAquariumCompositeColor(float r, float g, float b, float a)
     {
         return D2D1::ColorF(
@@ -445,6 +457,12 @@ namespace am::ui
         uiVsyncEnabled_ = enabled;
     }
 
+    void AceShellUi::setContentBrowserController(
+        am::editor::content_browser::ContentBrowserController* controller) noexcept
+    {
+        contentBrowserController_ = controller;
+    }
+
     void AceShellUi::setRuntimeFrameDeltaSeconds(double deltaSeconds)
     {
         runtimeFrameDeltaSeconds_ = std::clamp(deltaSeconds, 0.0, 1.0);
@@ -833,6 +851,13 @@ namespace am::ui
                 ScreenToClient(parent_, &p);
 
                 auto ctx = makeContext();
+                if (engineEditorModeActive_ && handleContentBrowserMouseWheel(
+                    ctx, static_cast<float>(p.x), static_cast<float>(p.y), wheel))
+                {
+                    invalidateRect(contentBrowserRect_);
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
                 if (engineLogOverlayVisible_ && handleEngineLogOverlayWheel(ctx, static_cast<float>(p.x), static_cast<float>(p.y), wheel))
                 {
                     invalidateRect(engineLogOverlayRect_.empty() ? aquariumEmbeddedViewportRect_ : engineLogOverlayRect_);
@@ -1071,7 +1096,7 @@ namespace am::ui
             {
                 if (engineEditorModeActive_)
                 {
-                    handleEngineEditorClick(x, y);
+                    handleEngineEditorClick(x, y, message == WM_LBUTTONDBLCLK ? 2u : 1u);
                     invalidate();
                     if (handled) { *handled = true; }
                     return 0;
@@ -1450,6 +1475,12 @@ namespace am::ui
 
             if (environmentOpen_ && environmentModalRect_.contains(x, y))
             {
+                if (engineEditorModeActive_ && contentBrowserVisible() && contentBrowserRect_.contains(x, y))
+                {
+                    invalidateRect(contentBrowserRect_);
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
                 // ACE-AQ3D6: hover/click stability. While the Environment UI is
                 // active, do not run hover logic for the chat shell underneath it.
                 // A hover-only move changes exactly one hot-id visual state and
@@ -1527,6 +1558,12 @@ namespace am::ui
             if (cameraSpeedPopupOpen_ && cameraSpeedInputFocused_ && handleCameraSpeedChar(wParam))
             {
                 invalidateRect(inflateRect(cameraSpeedPopupRect_, 8.0f));
+                if (handled) { *handled = true; }
+                return 0;
+            }
+            if (engineEditorModeActive_ && handleContentBrowserChar(wParam))
+            {
+                invalidateRect(contentBrowserRect_);
                 if (handled) { *handled = true; }
                 return 0;
             }
@@ -1609,6 +1646,13 @@ namespace am::ui
             }
 
             if (shortcutHelp_.visible() && shortcutHelp_.onKeyDown(wParam))
+            {
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (engineEditorModeActive_ && handleContentBrowserKeyDown(wParam, keyboard))
             {
                 invalidate();
                 if (handled) { *handled = true; }
@@ -3419,7 +3463,14 @@ namespace am::ui
 
     std::wstring AceShellUi::widen(const std::string& text) const
     {
-        return std::wstring(text.begin(), text.end());
+        if (text.empty()) return {};
+        const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+            static_cast<int>(text.size()), nullptr, 0);
+        if (length <= 0) return std::wstring(text.begin(), text.end());
+        std::wstring result(static_cast<std::size_t>(length), L'\0');
+        if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
+            result.data(), length) != length) return std::wstring(text.begin(), text.end());
+        return result;
     }
 
     bool AceShellUi::isAquariumButtonHovered(UiRect rect) const
@@ -3464,6 +3515,7 @@ namespace am::ui
             engineConsoleToggleRect_,
             engineOutlinerToggleRect_,
             engineDetailsToggleRect_,
+            engineContentBrowserToggleRect_,
             engineShortcutHelpRect_,
             aquariumLeftResizeHandleRect_,
             aquariumRightResizeHandleRect_
@@ -3528,6 +3580,7 @@ namespace am::ui
             engineConsoleToggleRect_,
             engineOutlinerToggleRect_,
             engineDetailsToggleRect_,
+            engineContentBrowserToggleRect_,
             engineShortcutHelpRect_,
             aquariumLeftResizeHandleRect_,
             aquariumRightResizeHandleRect_
@@ -5284,6 +5337,9 @@ namespace am::ui
         if (engineWorkspaceController_.draggingSplitter())
             engineWorkspaceController_.cancelPointerInteraction(&ignored);
         closeEngineMenu();
+        cancelContentBrowserEdit();
+        contentBrowserAddPopupOpen_ = false;
+        contentBrowserFocused_ = false;
         if (cameraSpeedPopupOpen_) closeCameraSpeedPopup(false);
         engineEditorModeActive_ = false;
         aquarium3DModeActive_ = true;
@@ -5344,6 +5400,10 @@ namespace am::ui
                 const auto* tab = engineWorkspaceController_.layout().findTab("tab.details");
                 return tab && tab->visible;
             }});
+        add({"window.toggle_content_browser", L"Content Browser", L"Open or close the project asset drawer.", L"Window", "Editor",
+            CommandType::Toggle, KeyChord{VK_SPACE, Modifier::Control}, [this]() { toggleContentBrowser(); },
+            [this]() { return contentBrowserController_ && contentBrowserController_->initialized(); },
+            [this]() { return contentBrowserVisible(); }});
         add({"window.reset_layout", L"Reset Layout", L"Restore the canonical editor panel layout.", L"Window", "Editor",
             CommandType::Action, std::nullopt, [this]() {
                 std::string error;
@@ -5455,6 +5515,7 @@ namespace am::ui
         if (engineConsoleToggleRect_.contains(x, y)) return executeEngineCommand("view.toggle_console");
         if (engineOutlinerToggleRect_.contains(x, y)) return executeEngineCommand("window.toggle_outliner");
         if (engineDetailsToggleRect_.contains(x, y)) return executeEngineCommand("window.toggle_details");
+        if (engineContentBrowserToggleRect_.contains(x, y)) return executeEngineCommand("window.toggle_content_browser");
         if (engineShortcutHelpRect_.contains(x, y)) return executeEngineCommand("help.shortcuts");
         return false;
     }
@@ -5494,17 +5555,20 @@ namespace am::ui
         engineConsoleToggleRect_ = makeUiRect(246.0f, buttonTop, 348.0f, buttonBottom);
         engineOutlinerToggleRect_ = makeUiRect(356.0f, buttonTop, 458.0f, buttonBottom);
         engineDetailsToggleRect_ = makeUiRect(466.0f, buttonTop, 554.0f, buttonBottom);
-        engineShortcutHelpRect_ = makeUiRect(562.0f, buttonTop, 646.0f, buttonBottom);
+        engineContentBrowserToggleRect_ = makeUiRect(562.0f, buttonTop, 678.0f, buttonBottom);
+        engineShortcutHelpRect_ = makeUiRect(686.0f, buttonTop, 770.0f, buttonBottom);
         engineResetLayoutRect_ = makeUiRect(0, 0, 0, 0);
 
         const auto outliner = engineCommandRegistry_.find("window.toggle_outliner");
         const auto details = engineCommandRegistry_.find("window.toggle_details");
         const auto console = engineCommandRegistry_.find("view.toggle_console");
+        const auto content = engineCommandRegistry_.find("window.toggle_content_browser");
         renderAquariumMiniButton(ctx, engineBackToAiRect_, L"AI Details", false);
         renderAquariumMiniButton(ctx, engineCameraResetRect_, L"Reset Camera", false);
         renderAquariumMiniButton(ctx, engineConsoleToggleRect_, L"Console", console && console->checked);
         renderAquariumMiniButton(ctx, engineOutlinerToggleRect_, L"Outliner", outliner && outliner->checked);
         renderAquariumMiniButton(ctx, engineDetailsToggleRect_, L"Details", details && details->checked);
+        renderAquariumMiniButton(ctx, engineContentBrowserToggleRect_, L"Content", content && content->checked);
         renderAquariumMiniButton(ctx, engineShortcutHelpRect_, L"Shortcuts", shortcutHelp_.visible());
 
         engineMenuRows_.clear();
@@ -5516,7 +5580,7 @@ namespace am::ui
         if (engineOpenMenu_ == "Window")
         {
             anchor = engineMenuWindowRect_;
-            commandIds = {"window.toggle_outliner", "window.toggle_details", "window.reset_layout"};
+            commandIds = {"window.toggle_outliner", "window.toggle_details", "window.toggle_content_browser", "window.reset_layout"};
         }
         else if (engineOpenMenu_ == "View")
         {
@@ -5556,9 +5620,477 @@ namespace am::ui
         }
     }
 
-    bool AceShellUi::handleEngineEditorClick(float x, float y)
+    bool AceShellUi::contentBrowserVisible() const
     {
-        if (handleEngineCommandSurfaceClick(x, y)) return true;
+        const auto* tab = engineWorkspaceController_.layout().findTab("tab.content");
+        return contentBrowserController_ && contentBrowserController_->initialized() && tab && tab->visible;
+    }
+
+    void AceShellUi::toggleContentBrowser()
+    {
+        if (!contentBrowserController_ || !contentBrowserController_->initialized()) return;
+        std::string error;
+        const bool visible = contentBrowserVisible();
+        if (!engineWorkspaceController_.setTabVisible("tab.content", !visible, &error))
+        {
+            showToast(L"Content Browser", widen(error), D2DToastKind::Error);
+            return;
+        }
+        if (visible)
+        {
+            cancelContentBrowserEdit();
+            contentBrowserAddPopupOpen_ = false;
+            contentBrowserFocused_ = false;
+        }
+        else
+        {
+            contentBrowserController_->synchronize();
+            contentBrowserFocused_ = true;
+            requestParentCompositedViewportHold(24u, L"content-browser-open");
+        }
+        commitEngineWorkspaceLayout();
+    }
+
+    void AceShellUi::beginContentBrowserCreateFolder()
+    {
+        if (!contentBrowserVisible()) return;
+        contentBrowserAddPopupOpen_ = false;
+        contentBrowserEditMode_ = ContentBrowserEditMode::CreateFolder;
+        contentBrowserEditInput_.setText(L"NewFolder");
+        contentBrowserEditInput_.setFocused(true);
+        contentBrowserEditInput_.selectAll();
+    }
+
+    bool AceShellUi::beginContentBrowserRename()
+    {
+        if (!contentBrowserVisible()) return false;
+        auto* model = contentBrowserController_->model();
+        if (!model || !model->beginRenameSelected()) return false;
+        const auto* item = model->renameItem();
+        if (!item) return false;
+        contentBrowserEditMode_ = ContentBrowserEditMode::Rename;
+        contentBrowserEditInput_.setText(widen(item->displayName));
+        contentBrowserEditInput_.setFocused(true);
+        contentBrowserEditInput_.selectAll();
+        return true;
+    }
+
+    void AceShellUi::cancelContentBrowserEdit()
+    {
+        if (contentBrowserController_ && contentBrowserController_->model())
+            contentBrowserController_->model()->cancelRename();
+        contentBrowserEditMode_ = ContentBrowserEditMode::None;
+        contentBrowserEditInput_.setFocused(false);
+    }
+
+    bool AceShellUi::commitContentBrowserEdit()
+    {
+        if (!contentBrowserController_) return false;
+        if (contentBrowserEditMode_ != ContentBrowserEditMode::CreateFolder &&
+            contentBrowserEditMode_ != ContentBrowserEditMode::Rename) return false;
+        const std::string name = aceUtf8FromWide(contentBrowserEditInput_.text());
+        if (name.empty())
+        {
+            showToast(L"Content Browser", L"Name cannot be empty or invalid Unicode.", D2DToastKind::Warning);
+            return true;
+        }
+        const auto result = contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder ?
+            contentBrowserController_->createFolder(name) : contentBrowserController_->renameSelection(name);
+        if (!result)
+        {
+            showToast(L"Content Browser", widen(result.error), D2DToastKind::Warning);
+            return false;
+        }
+        cancelContentBrowserEdit();
+        contentBrowserItemsScroll_ = 0.0f;
+        return true;
+    }
+
+    void AceShellUi::renderContentBrowser(D2DRenderContext& ctx, UiRect contentRect)
+    {
+        using namespace am::editor::content_browser;
+        contentBrowserRect_ = contentRect;
+        contentBrowserTreeHits_.clear();
+        contentBrowserItemHits_.clear();
+        if (!contentBrowserVisible() || contentRect.empty()) return;
+
+        auto* model = contentBrowserController_->model();
+        if (!model) return;
+        D2DWidgetUtils::fillRect(ctx, contentRect, ctx.brushes.panelDeep);
+
+        const bool compactToolbar = contentRect.width() < 760.0f;
+        const float desiredToolbarHeight = compactToolbar ? 76.0f : 44.0f;
+        const float toolbarHeight = std::min(desiredToolbarHeight,
+            std::max(32.0f, contentRect.height() * (compactToolbar ? 0.42f : 0.22f)));
+        const UiRect toolbar = makeUiRect(contentRect.left, contentRect.top, contentRect.right, contentRect.top + toolbarHeight);
+        D2DWidgetUtils::fillRect(ctx, toolbar, ctx.brushes.panelElevated);
+        D2DWidgetUtils::drawSoftSeparator(ctx, makeUiRect(toolbar.left, toolbar.bottom - 1.0f, toolbar.right, toolbar.bottom));
+
+        float x = toolbar.left + 8.0f;
+        const float buttonTop = toolbar.top + 6.0f;
+        const float buttonBottom = std::min(toolbar.bottom - 4.0f, toolbar.top + 36.0f);
+        contentBrowserBackRect_ = makeUiRect(x, buttonTop, x + 30.0f, buttonBottom); x += 34.0f;
+        contentBrowserForwardRect_ = makeUiRect(x, buttonTop, x + 30.0f, buttonBottom); x += 34.0f;
+        contentBrowserUpRect_ = makeUiRect(x, buttonTop, x + 30.0f, buttonBottom); x += 38.0f;
+        contentBrowserAddRect_ = makeUiRect(x, buttonTop, x + 92.0f, buttonBottom); x += 100.0f;
+        renderAquariumMiniButton(ctx, contentBrowserBackRect_, L"<", model->canBack());
+        renderAquariumMiniButton(ctx, contentBrowserForwardRect_, L">", model->canForward());
+        renderAquariumMiniButton(ctx, contentBrowserUpRect_, L"^", model->canGoUp());
+        renderAquariumMiniButton(ctx, contentBrowserAddRect_, L"+ Add", contentBrowserAddPopupOpen_);
+
+        const float viewRight = toolbar.right - 8.0f;
+        contentBrowserListRect_ = makeUiRect(viewRight - 32.0f, buttonTop, viewRight, buttonBottom);
+        contentBrowserTilesRect_ = makeUiRect(viewRight - 68.0f, buttonTop, viewRight - 36.0f, buttonBottom);
+        renderAquariumMiniButton(ctx, contentBrowserTilesRect_, L"[]", model->viewMode() == ViewMode::Tiles);
+        renderAquariumMiniButton(ctx, contentBrowserListRect_, L"=", model->viewMode() == ViewMode::List);
+        const float searchWidth = std::clamp(contentRect.width() * 0.22f, 150.0f, 290.0f);
+        const bool showSearch = compactToolbar ? toolbarHeight >= 64.0f : contentBrowserTilesRect_.left > x + 170.0f;
+        contentBrowserSearchRect_ = !showSearch ? makeUiRect(0, 0, 0, 0) : (compactToolbar ?
+            makeUiRect(toolbar.left + 8.0f, toolbar.top + 42.0f, toolbar.right - 8.0f, toolbar.bottom - 5.0f) :
+            makeUiRect(std::max(x + 120.0f, contentBrowserTilesRect_.left - searchWidth - 8.0f),
+                buttonTop, contentBrowserTilesRect_.left - 8.0f, buttonBottom));
+        if (showSearch)
+        {
+            contentBrowserSearchInput_.setRect(contentBrowserSearchRect_);
+            contentBrowserSearchInput_.setPlaceholder(L"Search assets...");
+            contentBrowserSearchInput_.render(ctx);
+        }
+
+        UiRect breadcrumbRect = compactToolbar ? makeUiRect(0, 0, 0, 0) :
+            makeUiRect(x, buttonTop, std::max(x, contentBrowserSearchRect_.left - 8.0f), buttonBottom);
+        std::wstring breadcrumbText;
+        for (const auto& crumb : model->breadcrumbs())
+        {
+            if (!breadcrumbText.empty()) breadcrumbText += L"  >  ";
+            breadcrumbText += widen(crumb.label);
+        }
+        D2DTextLayoutFoundation::Draw(ctx, breadcrumbText, FontRole::Small, breadcrumbRect, ctx.brushes.textDim,
+            D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+        const float bodyTop = toolbar.bottom;
+        if (bodyTop + 24.0f >= contentRect.bottom)
+        {
+            contentBrowserTreeRect_ = makeUiRect(0, 0, 0, 0);
+            contentBrowserItemsRect_ = makeUiRect(0, 0, 0, 0);
+            return;
+        }
+        const float treeWidth = std::min(contentRect.width() * 0.46f,
+            std::clamp(contentRect.width() * 0.22f, 150.0f, 280.0f));
+        contentBrowserTreeRect_ = makeUiRect(contentRect.left, bodyTop, contentRect.left + treeWidth, contentRect.bottom);
+        contentBrowserItemsRect_ = makeUiRect(contentBrowserTreeRect_.right + 1.0f, bodyTop, contentRect.right, contentRect.bottom);
+        D2DWidgetUtils::fillRect(ctx, contentBrowserTreeRect_, ctx.brushes.panel);
+        D2DWidgetUtils::drawSoftSeparator(ctx, makeUiRect(contentBrowserTreeRect_.right, bodyTop,
+            contentBrowserTreeRect_.right + 1.0f, contentRect.bottom));
+
+        constexpr float treeRowHeight = 24.0f;
+        const float treeContentHeight = treeRowHeight * static_cast<float>(model->folderTree().size()) + 12.0f;
+        const float treeMaxScroll = std::max(0.0f, treeContentHeight - contentBrowserTreeRect_.height());
+        contentBrowserTreeScroll_ = std::clamp(contentBrowserTreeScroll_, 0.0f, treeMaxScroll);
+        if (ctx.target) ctx.target->PushAxisAlignedClip(contentBrowserTreeRect_.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        float treeTop = contentBrowserTreeRect_.top + 6.0f - contentBrowserTreeScroll_;
+        for (const auto& folder : model->folderTree())
+        {
+            const UiRect row = makeUiRect(contentBrowserTreeRect_.left + 4.0f, treeTop,
+                contentBrowserTreeRect_.right - 4.0f, treeTop + treeRowHeight);
+            if (row.bottom >= contentBrowserTreeRect_.top && row.top <= contentBrowserTreeRect_.bottom)
+            {
+                contentBrowserTreeHits_.push_back({folder.path, row});
+                const bool active = folder.path.comparisonKey() == model->currentFolder().comparisonKey();
+                if (active || row.contains(mouseX_, mouseY_))
+                    D2DWidgetUtils::fillRounded(ctx, row, 4.0f, active ? ctx.brushes.panelSoft : ctx.brushes.panelElevated);
+                const float indent = 8.0f + static_cast<float>(folder.depth) * 14.0f;
+                const std::wstring label = folder.path.isRoot() ? L"Content" : widen(std::string(folder.path.leafName()));
+                D2DTextLayoutFoundation::Draw(ctx, L"\x25B8", FontRole::Small,
+                    makeUiRect(row.left + indent, row.top, row.left + indent + 14.0f, row.bottom), ctx.brushes.accent,
+                    D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+                D2DTextLayoutFoundation::Draw(ctx, label, FontRole::Small,
+                    makeUiRect(row.left + indent + 18.0f, row.top, row.right - 8.0f, row.bottom),
+                    active ? ctx.brushes.text : ctx.brushes.textDim, D2DTextOverflowMode::Ellipsis,
+                    DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            }
+            treeTop += treeRowHeight;
+        }
+        if (ctx.target) ctx.target->PopAxisAlignedClip();
+
+        const auto& items = model->visibleItems();
+        const UiRect itemClip = contentBrowserItemsRect_.inset({8.0f, 6.0f, 8.0f, 22.0f});
+        const bool tiles = model->viewMode() == ViewMode::Tiles;
+        const float itemWidth = tiles ? 132.0f : itemClip.width();
+        const float itemHeight = tiles ? 82.0f : 30.0f;
+        const std::size_t columns = tiles ? std::max<std::size_t>(1, static_cast<std::size_t>(itemClip.width() / itemWidth)) : 1;
+        const std::size_t rows = items.empty() ? 0 : (items.size() + columns - 1) / columns;
+        const float itemsContentHeight = static_cast<float>(rows) * itemHeight + 10.0f;
+        const float itemsMaxScroll = std::max(0.0f, itemsContentHeight - itemClip.height());
+        contentBrowserItemsScroll_ = std::clamp(contentBrowserItemsScroll_, 0.0f, itemsMaxScroll);
+        if (ctx.target) ctx.target->PushAxisAlignedClip(itemClip.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        for (std::size_t index = 0; index < items.size(); ++index)
+        {
+            const std::size_t rowIndex = index / columns;
+            const std::size_t columnIndex = index % columns;
+            const float left = itemClip.left + static_cast<float>(columnIndex) * itemWidth;
+            const float top = itemClip.top + static_cast<float>(rowIndex) * itemHeight - contentBrowserItemsScroll_;
+            const UiRect itemRect = makeUiRect(left + 2.0f, top + 2.0f,
+                std::min(itemClip.right, left + itemWidth - 4.0f), top + itemHeight - 4.0f);
+            if (itemRect.bottom < itemClip.top || itemRect.top > itemClip.bottom) continue;
+            contentBrowserItemHits_.push_back({index, itemRect});
+            const bool selected = model->isSelected(items[index]);
+            if (selected || itemRect.contains(mouseX_, mouseY_))
+                D2DWidgetUtils::fillRounded(ctx, itemRect, 5.0f, selected ? ctx.brushes.panelSoft : ctx.brushes.panelElevated,
+                    selected ? ctx.brushes.accent : ctx.brushes.borderDim, 1.0f);
+
+            const wchar_t* glyph = items[index].kind == ItemKind::Folder ? L"\x25A0" : L"\x25C6";
+            const UiRect iconRect = tiles ? makeUiRect(itemRect.left + 8.0f, itemRect.top + 5.0f,
+                itemRect.right - 8.0f, itemRect.top + 42.0f) : makeUiRect(itemRect.left + 6.0f, itemRect.top,
+                itemRect.left + 30.0f, itemRect.bottom);
+            D2DTextLayoutFoundation::Draw(ctx, glyph, tiles ? FontRole::BodyStrong : FontRole::Small, iconRect,
+                items[index].kind == ItemKind::Folder ? ctx.brushes.accentWarm : ctx.brushes.accent,
+                D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            const UiRect labelRect = tiles ? makeUiRect(itemRect.left + 6.0f, itemRect.top + 43.0f,
+                itemRect.right - 6.0f, itemRect.bottom - 3.0f) : makeUiRect(itemRect.left + 34.0f, itemRect.top,
+                itemRect.right - 82.0f, itemRect.bottom);
+            D2DTextLayoutFoundation::Draw(ctx, widen(items[index].displayName), FontRole::Small, labelRect,
+                selected ? ctx.brushes.text : ctx.brushes.textDim, D2DTextOverflowMode::Ellipsis,
+                tiles ? DWRITE_TEXT_ALIGNMENT_CENTER : DWRITE_TEXT_ALIGNMENT_LEADING,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            if (!tiles && items[index].kind == ItemKind::Asset)
+                D2DTextLayoutFoundation::Draw(ctx, widen(std::string(am::core::assets::AssetRegistry::typeName(items[index].assetType))),
+                    FontRole::Small, makeUiRect(itemRect.right - 80.0f, itemRect.top, itemRect.right - 8.0f, itemRect.bottom),
+                    ctx.brushes.muted, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_TRAILING,
+                    DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+
+        if (contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder)
+        {
+            const UiRect editRect = makeUiRect(itemClip.left + 4.0f, itemClip.top + 4.0f,
+                std::min(itemClip.right, itemClip.left + 260.0f), itemClip.top + 36.0f);
+            contentBrowserEditInput_.setRect(editRect);
+            contentBrowserEditInput_.render(ctx);
+        }
+        else if (contentBrowserEditMode_ == ContentBrowserEditMode::Rename && model->renameItem())
+        {
+            for (const auto& hit : contentBrowserItemHits_)
+            {
+                if (hit.index < items.size() && model->isSelected(items[hit.index]))
+                {
+                    const UiRect editRect = tiles ? makeUiRect(hit.rect.left + 4.0f, hit.rect.bottom - 32.0f,
+                        hit.rect.right - 4.0f, hit.rect.bottom - 2.0f) : hit.rect.inset({32.0f, 1.0f, 70.0f, 1.0f});
+                    contentBrowserEditInput_.setRect(editRect);
+                    contentBrowserEditInput_.render(ctx);
+                    break;
+                }
+            }
+        }
+        if (ctx.target) ctx.target->PopAxisAlignedClip();
+
+        const std::wstring count = std::to_wstring(items.size()) + L" items" +
+            (model->unfilteredItemCount() == items.size() ? L"" : L" (filtered)");
+        D2DTextLayoutFoundation::Draw(ctx, count, FontRole::Small,
+            makeUiRect(contentBrowserItemsRect_.left + 10.0f, contentBrowserItemsRect_.bottom - 20.0f,
+                contentBrowserItemsRect_.right - 10.0f, contentBrowserItemsRect_.bottom), ctx.brushes.muted,
+            D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+        contentBrowserAddPopupRect_ = makeUiRect(0, 0, 0, 0);
+        contentBrowserNewFolderRect_ = makeUiRect(0, 0, 0, 0);
+        if (contentBrowserAddPopupOpen_)
+        {
+            contentBrowserAddPopupRect_ = makeUiRect(contentBrowserAddRect_.left, contentBrowserAddRect_.bottom + 2.0f,
+                contentBrowserAddRect_.left + 190.0f, contentBrowserAddRect_.bottom + 44.0f);
+            contentBrowserNewFolderRect_ = contentBrowserAddPopupRect_.inset({4.0f, 4.0f, 4.0f, 4.0f});
+            D2DWidgetUtils::fillRounded(ctx, contentBrowserAddPopupRect_, 6.0f, ctx.brushes.panelElevated,
+                ctx.brushes.border, 1.0f);
+            if (contentBrowserNewFolderRect_.contains(mouseX_, mouseY_))
+                D2DWidgetUtils::fillRounded(ctx, contentBrowserNewFolderRect_, 4.0f, ctx.brushes.panelSoft);
+            D2DTextLayoutFoundation::Draw(ctx, L"New Folder", FontRole::Small,
+                contentBrowserNewFolderRect_.inset({10.0f, 0.0f, 8.0f, 0.0f}), ctx.brushes.text,
+                D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+    }
+
+    bool AceShellUi::handleContentBrowserMouseDown(D2DRenderContext& ctx, float x, float y, unsigned clickCount)
+    {
+        using namespace am::editor::content_browser;
+        if (!contentBrowserVisible() || !contentBrowserRect_.contains(x, y)) return false;
+        contentBrowserFocused_ = true;
+        auto* model = contentBrowserController_->model();
+        if (!model) return false;
+
+        if (contentBrowserAddPopupOpen_)
+        {
+            if (contentBrowserNewFolderRect_.contains(x, y)) { beginContentBrowserCreateFolder(); return true; }
+            if (contentBrowserAddPopupRect_.contains(x, y)) return true;
+            contentBrowserAddPopupOpen_ = false;
+        }
+        if (contentBrowserBackRect_.contains(x, y)) { if (model->back()) contentBrowserItemsScroll_ = 0.0f; return true; }
+        if (contentBrowserForwardRect_.contains(x, y)) { if (model->forward()) contentBrowserItemsScroll_ = 0.0f; return true; }
+        if (contentBrowserUpRect_.contains(x, y)) { if (model->up()) contentBrowserItemsScroll_ = 0.0f; return true; }
+        if (contentBrowserAddRect_.contains(x, y)) { contentBrowserAddPopupOpen_ = !contentBrowserAddPopupOpen_; return true; }
+        if (contentBrowserTilesRect_.contains(x, y)) { model->setViewMode(ViewMode::Tiles); return true; }
+        if (contentBrowserListRect_.contains(x, y)) { model->setViewMode(ViewMode::List); return true; }
+        if (contentBrowserSearchRect_.contains(x, y))
+        {
+            if ((contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder ||
+                 contentBrowserEditMode_ == ContentBrowserEditMode::Rename) && !commitContentBrowserEdit()) return true;
+            contentBrowserEditMode_ = ContentBrowserEditMode::Search;
+            contentBrowserSearchInput_.setFocused(true);
+            contentBrowserSearchInput_.onMouseDown(ctx, x, y);
+            return true;
+        }
+        contentBrowserSearchInput_.setFocused(false);
+        if ((contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder ||
+             contentBrowserEditMode_ == ContentBrowserEditMode::Rename) && contentBrowserEditInput_.hitTest(x, y))
+        {
+            contentBrowserEditInput_.onMouseDown(ctx, x, y);
+            return true;
+        }
+        if ((contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder ||
+             contentBrowserEditMode_ == ContentBrowserEditMode::Rename) && !commitContentBrowserEdit()) return true;
+        if (contentBrowserEditMode_ == ContentBrowserEditMode::Search) contentBrowserEditMode_ = ContentBrowserEditMode::None;
+
+        for (const auto& hit : contentBrowserTreeHits_)
+        {
+            if (hit.rect.contains(x, y))
+            {
+                if (model->navigateTo(hit.path)) contentBrowserItemsScroll_ = 0.0f;
+                return true;
+            }
+        }
+        for (const auto& hit : contentBrowserItemHits_)
+        {
+            if (!hit.rect.contains(x, y) || hit.index >= model->visibleItems().size()) continue;
+            const auto keyboard = D2DKeyboardState::current();
+            const SelectionMode mode = keyboard.shift ? SelectionMode::Range :
+                (keyboard.ctrl ? SelectionMode::Toggle : SelectionMode::Replace);
+            (void)model->selectVisible(hit.index, mode);
+            const auto item = model->visibleItems()[hit.index];
+            if (clickCount >= 2 && item.kind == ItemKind::Folder)
+            {
+                if (model->navigateTo(item.path)) contentBrowserItemsScroll_ = 0.0f;
+            }
+            return true;
+        }
+        if (contentBrowserItemsRect_.contains(x, y)) model->clearSelection();
+        return true;
+    }
+
+    bool AceShellUi::handleContentBrowserMouseWheel(D2DRenderContext& ctx, float x, float y, int wheelDelta)
+    {
+        (void)ctx;
+        if (!contentBrowserVisible() || !contentBrowserRect_.contains(x, y)) return false;
+        const float delta = -static_cast<float>(wheelDelta) * 0.28f;
+        if (contentBrowserTreeRect_.contains(x, y)) contentBrowserTreeScroll_ = std::max(0.0f, contentBrowserTreeScroll_ + delta);
+        else if (contentBrowserItemsRect_.contains(x, y)) contentBrowserItemsScroll_ = std::max(0.0f, contentBrowserItemsScroll_ + delta);
+        return true;
+    }
+
+    bool AceShellUi::handleContentBrowserChar(WPARAM wParam)
+    {
+        if (!contentBrowserVisible() || !contentBrowserFocused_) return false;
+        if (contentBrowserEditMode_ == ContentBrowserEditMode::Search && contentBrowserSearchInput_.onChar(wParam))
+        {
+            contentBrowserController_->model()->setSearchText(aceUtf8FromWide(contentBrowserSearchInput_.text()));
+            contentBrowserItemsScroll_ = 0.0f;
+            return true;
+        }
+        if ((contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder ||
+             contentBrowserEditMode_ == ContentBrowserEditMode::Rename) && contentBrowserEditInput_.onChar(wParam)) return true;
+        return false;
+    }
+
+    bool AceShellUi::handleContentBrowserKeyDown(WPARAM key, const D2DKeyboardState& keyboard)
+    {
+        using namespace am::editor::content_browser;
+        if (!contentBrowserVisible() || !contentBrowserFocused_) return false;
+        auto* model = contentBrowserController_->model();
+        if (!model) return false;
+        if (keyboard.ctrl && key == VK_SPACE) return false;
+
+        if (contentBrowserEditMode_ == ContentBrowserEditMode::Search)
+        {
+            if (key == VK_ESCAPE)
+            {
+                contentBrowserSearchInput_.setFocused(false);
+                contentBrowserEditMode_ = ContentBrowserEditMode::None;
+                return true;
+            }
+            if (key == VK_RETURN)
+            {
+                contentBrowserSearchInput_.setFocused(false);
+                contentBrowserEditMode_ = ContentBrowserEditMode::None;
+                return true;
+            }
+            if (contentBrowserSearchInput_.onKeyDown(key, keyboard.ctrl, keyboard.shift))
+            {
+                model->setSearchText(aceUtf8FromWide(contentBrowserSearchInput_.text()));
+                contentBrowserItemsScroll_ = 0.0f;
+                return true;
+            }
+        }
+        if (contentBrowserEditMode_ == ContentBrowserEditMode::CreateFolder ||
+            contentBrowserEditMode_ == ContentBrowserEditMode::Rename)
+        {
+            if (key == VK_ESCAPE) { cancelContentBrowserEdit(); return true; }
+            if (key == VK_RETURN) { (void)commitContentBrowserEdit(); return true; }
+            if (contentBrowserEditInput_.onKeyDown(key, keyboard.ctrl, keyboard.shift)) return true;
+            return false;
+        }
+        if (key == VK_F2 && keyboard.noModifiers()) return beginContentBrowserRename();
+        if (keyboard.ctrl && key == 'A')
+        {
+            model->clearSelection();
+            for (std::size_t index = 0; index < model->visibleItems().size(); ++index)
+                (void)model->selectVisible(index, index == 0 ? SelectionMode::Replace : SelectionMode::Add);
+            return true;
+        }
+        if (keyboard.ctrl && key == 'Z')
+        {
+            const auto result = contentBrowserController_->undo();
+            if (!result) showToast(L"Undo", widen(result.error), D2DToastKind::Warning);
+            return true;
+        }
+        if (keyboard.ctrl && key == 'Y')
+        {
+            const auto result = contentBrowserController_->redo();
+            if (!result) showToast(L"Redo", widen(result.error), D2DToastKind::Warning);
+            return true;
+        }
+        const auto& items = model->visibleItems();
+        if ((key == VK_UP || key == VK_DOWN || key == VK_HOME || key == VK_END) && !items.empty())
+        {
+            std::size_t selectedIndex = 0;
+            bool found = false;
+            for (std::size_t index = 0; index < items.size(); ++index)
+            {
+                if (model->isSelected(items[index])) { selectedIndex = index; found = true; break; }
+            }
+            if (key == VK_HOME) selectedIndex = 0;
+            else if (key == VK_END) selectedIndex = items.size() - 1;
+            else if (key == VK_UP && found && selectedIndex > 0) --selectedIndex;
+            else if (key == VK_DOWN && found && selectedIndex + 1 < items.size()) ++selectedIndex;
+            else if (key == VK_DOWN && !found) selectedIndex = 0;
+            (void)model->selectVisible(selectedIndex, keyboard.shift ? SelectionMode::Range : SelectionMode::Replace);
+            return true;
+        }
+        if (key == VK_RETURN && model->selectionCount() == 1)
+        {
+            const auto selected = model->selectedItems();
+            if (!selected.empty() && selected.front().kind == ItemKind::Folder)
+            {
+                (void)model->navigateTo(selected.front().path);
+                contentBrowserItemsScroll_ = 0.0f;
+            }
+            return true;
+        }
+        if (key == VK_BACK && keyboard.noModifiers()) { (void)model->up(); return true; }
+        if (key == VK_ESCAPE && keyboard.noModifiers()) { model->clearSelection(); return true; }
+        return false;
+    }
+
+    bool AceShellUi::handleEngineEditorClick(float x, float y, unsigned clickCount)
+    {
+        if (handleEngineCommandSurfaceClick(x, y)) { contentBrowserFocused_ = false; return true; }
+        auto ctx = makeContext();
+        if (handleContentBrowserMouseDown(ctx, x, y, clickCount)) return true;
+        contentBrowserFocused_ = false;
         std::string error;
         if (engineWorkspaceController_.pointerDown(x, y, &error))
         {
@@ -5684,6 +6216,11 @@ namespace am::ui
             L"Camera Z    " + std::to_wstring(cameraPosition.z),
             L"Move speed  " + std::to_wstring(aquariumSingleHwndCamera_.MoveSpeed())
         });
+
+        if (const auto* contentNode = geometry->findNode("stack.content"))
+            renderContentBrowser(ctx, toUiRect(contentNode->content));
+        else
+            contentBrowserRect_ = makeUiRect(0, 0, 0, 0);
 
         // Menus are a real overlay layer and therefore paint after the viewport
         // and dock panels. This mirrors Slate's menu stack instead of letting the

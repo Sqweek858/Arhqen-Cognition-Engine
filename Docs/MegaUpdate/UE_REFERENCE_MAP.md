@@ -125,3 +125,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - `Editor/ContentBrowserData/Public/ContentBrowserItem.h` gives browser items stable identity independent of their current visual row or tile.
 - `Editor/ContentBrowser/Public/ContentBrowserDelegates.h` keeps selection, activation and rename as explicit interaction boundaries.
 - ACE adaptation: `ContentBrowserModel` consumes immutable registry generations and projects navigation, breadcrumbs, folders, filtered direct children and stable selection without D2D ownership. Assets use GUID identity across moves; folder/current-path state repairs conservatively after removal. The next slice can render and route input without duplicating asset logic inside paint code.
+
+## M3.5 - Content Browser interaction and drawer
+
+- UE keeps Content Browser item actions behind data-source/Asset Tools operations and uses temporary creation/rename contexts rather than mutating files from Slate paint code.
+- UE's Content Drawer is a docked editor surface with shared command bindings and keyboard focus, not a separate renderer window.
+- ACE adaptation: `ContentBrowserController` is the action boundary; the D2D drawer consumes only controller/model state. Ctrl+Space toggles the existing workspace tab, inline edits commit through validated operations, and focus prevents browser shortcuts from leaking into the viewport. Only backed actions are painted.

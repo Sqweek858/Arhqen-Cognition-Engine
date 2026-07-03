@@ -59,6 +59,7 @@
 #include "ArhqenCognitionEngine/Editor/Workspace/AceEditorWorkspaceController.h"
 #include "ArhqenCognitionEngine/Editor/Viewport/AceCameraSpeedModel.h"
 #include "ArhqenCognitionEngine/Editor/Commands/AceCommandRegistry.h"
+#include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserController.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DDrawCommandBuffer.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DUiDebugOverlay.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DAquariumTelemetryWidgets.h"
@@ -114,6 +115,7 @@ namespace am::ui
         void setInspectorProvider(InspectorProvider provider);
         void setLayoutProfilePath(std::filesystem::path path);
         void setVsyncEnabled(bool enabled);
+        void setContentBrowserController(am::editor::content_browser::ContentBrowserController* controller) noexcept;
         void setRuntimeFrameDeltaSeconds(double deltaSeconds);
         void flushPendingPaint();
         bool create(HWND parent, int width, int height, std::string* error);
@@ -157,13 +159,24 @@ namespace am::ui
         void renderEngineEditorMode(D2DRenderContext& ctx);
         void enterEngineEditorMode();
         void leaveEngineEditorMode();
-        bool handleEngineEditorClick(float x, float y);
+        bool handleEngineEditorClick(float x, float y, unsigned clickCount = 1);
         void initializeEngineCommands();
         bool executeEngineCommand(std::string_view commandId);
         bool handleEngineCommandShortcut(WPARAM key, const D2DKeyboardState& keyboard, bool repeated);
         void renderEngineCommandSurface(D2DRenderContext& ctx, float topBarHeight);
         bool handleEngineCommandSurfaceClick(float x, float y);
         void closeEngineMenu();
+        void renderContentBrowser(D2DRenderContext& ctx, UiRect contentRect);
+        bool handleContentBrowserMouseDown(D2DRenderContext& ctx, float x, float y, unsigned clickCount);
+        bool handleContentBrowserMouseWheel(D2DRenderContext& ctx, float x, float y, int wheelDelta);
+        bool handleContentBrowserChar(WPARAM wParam);
+        bool handleContentBrowserKeyDown(WPARAM key, const D2DKeyboardState& keyboard);
+        void toggleContentBrowser();
+        bool contentBrowserVisible() const;
+        void beginContentBrowserCreateFolder();
+        bool beginContentBrowserRename();
+        bool commitContentBrowserEdit();
+        void cancelContentBrowserEdit();
         void commitEngineWorkspaceLayout();
         std::filesystem::path engineWorkspaceLayoutPath() const;
         void renderAquariumDx12ViewportSurface(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled);
@@ -389,6 +402,43 @@ namespace am::ui
         am::editor::EditorWorkspaceController engineWorkspaceController_{};
         am::editor::CameraSpeedModel cameraSpeedModel_{};
         am::editor::commands::CommandRegistry engineCommandRegistry_{};
+        am::editor::content_browser::ContentBrowserController* contentBrowserController_ = nullptr;
+        enum class ContentBrowserEditMode : std::uint8_t { None, Search, CreateFolder, Rename };
+        struct ContentBrowserTreeHit
+        {
+            am::core::assets::AssetPath path{};
+            UiRect rect{};
+        };
+        struct ContentBrowserItemHit
+        {
+            std::size_t index = 0;
+            UiRect rect{};
+        };
+        ContentBrowserEditMode contentBrowserEditMode_ = ContentBrowserEditMode::None;
+        D2DTextInput contentBrowserSearchInput_{};
+        D2DTextInput contentBrowserEditInput_{};
+        UiRect contentBrowserRect_{};
+        UiRect contentBrowserBackRect_{};
+        UiRect contentBrowserForwardRect_{};
+        UiRect contentBrowserUpRect_{};
+        UiRect contentBrowserAddRect_{};
+        UiRect contentBrowserTilesRect_{};
+        UiRect contentBrowserListRect_{};
+        UiRect contentBrowserSearchRect_{};
+        UiRect contentBrowserTreeRect_{};
+        UiRect contentBrowserItemsRect_{};
+        UiRect contentBrowserAddPopupRect_{};
+        UiRect contentBrowserNewFolderRect_{};
+        std::vector<ContentBrowserTreeHit> contentBrowserTreeHits_{};
+        std::vector<ContentBrowserItemHit> contentBrowserItemHits_{};
+        float contentBrowserTreeScroll_ = 0.0f;
+        float contentBrowserItemsScroll_ = 0.0f;
+        bool contentBrowserAddPopupOpen_ = false;
+        bool contentBrowserFocused_ = false;
+        std::uint32_t contentBrowserLastClickTime_ = 0;
+        float contentBrowserLastClickX_ = 0.0f;
+        float contentBrowserLastClickY_ = 0.0f;
+        unsigned contentBrowserClickCount_ = 0;
         bool engineCommandsInitialized_ = false;
         std::string engineOpenMenu_{};
         std::vector<std::pair<std::string, UiRect>> engineMenuRows_{};
@@ -686,6 +736,7 @@ namespace am::ui
         UiRect engineShortcutHelpRect_{};
         UiRect engineOutlinerToggleRect_{};
         UiRect engineDetailsToggleRect_{};
+        UiRect engineContentBrowserToggleRect_{};
         UiRect engineResetLayoutRect_{};
         UiRect aquariumLeftPanelRect_{};
         UiRect aquariumRightLogsPanelRect_{};

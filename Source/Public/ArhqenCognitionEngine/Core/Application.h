@@ -6,6 +6,7 @@
 #include "ArhqenCognitionEngine/Core/Assets/AceAssetReferences.h"
 #include "ArhqenCognitionEngine/Editor/Assets/AceAssetOperationService.h"
 #include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserModel.h"
+#include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserController.h"
 #include "ArhqenCognitionEngine/Editor/Transactions/AceTransaction.h"
 #include "ArhqenCognitionEngine/Core/ExitCode.h"
 #include "ArhqenCognitionEngine/Core/Logger.h"
@@ -49,6 +50,7 @@ namespace am::core
         am::editor::transactions::TransactionManager editorTransactions_{};
         am::editor::assets::AssetOperationService assetOperations_{};
         am::editor::content_browser::ContentBrowserModel contentBrowserModel_{};
+        am::editor::content_browser::ContentBrowserController contentBrowserController_{};
         am::renderer::NativeWindow window_;
         am::renderer::Dx12Renderer renderer_;
         am::renderer::UiDrawList uiDrawList_;

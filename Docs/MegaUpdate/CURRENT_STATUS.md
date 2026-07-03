@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.4 - Content Browser model (complete; ready to commit)
-- Latest known-good commit: `1216dfc` (`M3.3b: add transactional asset operations`)
+- Mini-milestone: M3.5 - functional D2D Content Browser drawer (complete; ready to commit)
+- Latest known-good commit: `899dcaf` (`M3.4: add Content Browser model`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -80,10 +80,17 @@
 - Registry generation changes now preserve moved asset selection by GUID and prune deleted selection/rename targets safely.
 - Removed current folders repair to the nearest surviving parent, while valid navigation history remains intact.
 - Integrated model synchronization into startup and every debounced watcher publication; the empty Content root remains valid.
+- Added a tested Content Browser controller that is the sole bridge from UI intent to transactional asset operations.
+- Exposed the real retained D2D Content Browser drawer through Ctrl+Space, Window menu and toolbar, with persistent workspace sizing.
+- Added back/forward/up navigation, breadcrumbs, folder tree, tile/list views, search, filtering-ready model projection and bounded scrolling.
+- Added mouse, Ctrl, Shift-range and keyboard selection, Enter folder activation, Ctrl+A, F2 inline rename and Create Folder.
+- Wired Content Browser Undo/Redo to the central asset transaction history while keeping destructive delete unexposed until confirmation UI exists.
+- Added strict UTF-8/UTF-16 conversion for user asset names and responsive narrow/tiny drawer geometry.
+- Kept Material creation and asset activation absent until their real formats/editors exist; the visible Add menu contains only functional actions.
 
 ## Next action
 
-Commit and push M3.4, then bind the verified model and Asset Operation Service to the retained D2D Content Browser drawer with Ctrl+Space, keyboard navigation and inline rename.
+Commit and push M3.5, then begin M3.6 scene/world foundation: stable scene entities, serialization, hierarchy projection and real selection/details data before exposing object editing.
 
 ## Existing baseline findings
 
@@ -137,3 +144,6 @@ Commit and push M3.4, then bind the verified model and Asset Operation Service t
 - M3.3b registry/reference/transaction regressions, runtime external-undo/empty-Content smoke and all builds: PASS.
 - `validate_ace_content_browser_model.ps1`: PASS (43 navigation, history, filter, selection, rename, delta-repair and scale checks, `/W4 /WX`).
 - M3.4 Asset Registry regression, 100,000-item bounded sync, hidden empty-Content startup and MSBuild Debug/Release plus CMake Debug: PASS.
+- `validate_ace_content_browser_controller.ps1`: PASS (24 real-filesystem action, GUID, extension, selection and Undo/Redo checks, `/W4 /WX`).
+- Expanded Engine shell integration: PASS (30 routes, command, paint-order, Unicode, responsive-layout and anti-placeholder checks).
+- M3.5 model/controller/shell regressions, hidden empty-Content startup and MSBuild Debug/Release plus CMake Debug: PASS.

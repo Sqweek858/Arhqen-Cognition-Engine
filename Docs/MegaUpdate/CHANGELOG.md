@@ -184,3 +184,14 @@
 - Preserved selection when an asset moves, removed stale targets after deletion and repaired removed current folders to a surviving parent.
 - Wired startup and live watcher publications to the model while keeping the visual drawer hidden until its complete interaction layer is connected.
 - Added 43 warning-as-error checks including a bounded 100,000-asset synchronization gate, plus all builds and hidden startup.
+
+## 2026-07-03 - M3.5 functional Content Browser drawer
+
+- Added a controller boundary that binds the browser model to transactional create, rename, duplicate, delete and Undo/Redo operations.
+- Exposed the retained D2D Content Browser drawer through Ctrl+Space, Window menu and toolbar without creating another HWND.
+- Added folder tree, breadcrumbs, navigation history, search, tile/list modes, bounded scroll and item counts over live registry generations.
+- Added pointer, Ctrl-toggle, Shift-range and keyboard selection, Enter folder activation, Ctrl+A, F2 inline rename and real New Folder creation.
+- Added strict UTF-8/UTF-16 conversion for project names and adaptive two-row toolbar/tiny-panel guards.
+- Preserved DX12/D2D layer order by painting the drawer before the final menu overlay and routing its input before viewport interaction.
+- Deliberately omitted New Material, asset opening and destructive Delete because their editor/confirmation backends are not complete yet.
+- Added 24 controller checks and expanded shell coverage to 30 checks; all build and runtime-empty-content gates pass.

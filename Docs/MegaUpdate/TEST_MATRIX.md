@@ -24,6 +24,7 @@ Populate exact commands/results during M0. Every mini-milestone adds or updates 
 | Asset identity / references | 49 expanded registry/reference checks PASS | Persisted subtree remap + rescan PASS | PASS | PASS | N/A | 65,536 refs/asset; indexed reverse lookup | M3.3a ready |
 | Transactional asset operations | 35 operation + registry/transaction regressions PASS | Runtime service/undo-root startup PASS | PASS | PASS | Content remains empty | External exact-byte stash; bounded history | M3.3b ready |
 | Content Browser model | 43 navigation/filter/selection/repair checks PASS | Startup + watcher generation sync PASS | PASS | PASS | Hidden empty-root startup PASS | 100,000 assets under 5 s PASS | M3.4 ready |
+| Content Browser drawer | 24 controller + 30 shell checks PASS | Registry/operations/D2D command binding PASS | PASS | PASS | Hidden empty-root startup PASS | Retained model; bounded scroll; responsive geometry | M3.5 ready |
 | Asset operations / scenes | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Materials/shaders | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Rendering/GI | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
