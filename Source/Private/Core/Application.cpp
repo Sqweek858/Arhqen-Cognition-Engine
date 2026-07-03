@@ -135,6 +135,22 @@ namespace am::core
         logger_.info("Runtime initialize begin.");
         logger_.info("Runtime max frames: " + std::to_string(maxFrames_));
 
+        const auto contentRoot = (repoRoot_ / "Content").lexically_normal();
+        const auto assetRegistryState = (repoRoot_ / "Build/Editor/ace-asset-registry.acebin").lexically_normal();
+        std::string assetRegistryError;
+        if (!assetRegistry_.initialize(contentRoot, assetRegistryState, &assetRegistryError))
+        {
+            logger_.error("Asset Registry initialization failed: " + assetRegistryError);
+            return false;
+        }
+        if (!assetRegistry_.lastWarning().empty())
+        {
+            logger_.warning("Asset Registry recovered state: " + assetRegistry_.lastWarning());
+        }
+        logger_.info("Asset Registry mounted /Game at " + contentRoot.string() +
+            " assets=" + std::to_string(assetRegistry_.snapshot().assets.size()) +
+            " folders=" + std::to_string(assetRegistry_.snapshot().folders.size()));
+
         const auto windowTitle = config_.getString("window.title", "Arhqen Cognition Engine");
         const auto windowWidth = std::max(320, config_.getInt("window.width", 1280));
         const auto windowHeight = std::max(240, config_.getInt("window.height", 720));

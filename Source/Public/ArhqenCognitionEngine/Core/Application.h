@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ArhqenCognitionEngine/Core/AppConfig.h"
+#include "ArhqenCognitionEngine/Core/Assets/AceAssetRegistry.h"
 #include "ArhqenCognitionEngine/Core/ExitCode.h"
 #include "ArhqenCognitionEngine/Core/Logger.h"
 #include "ArhqenCognitionEngine/Core/RuntimeClock.h"
@@ -37,6 +38,7 @@ namespace am::core
         Logger logger_;
         RuntimeClock clock_;
         TaskQueue tasks_;
+        am::core::assets::AssetRegistry assetRegistry_;
         am::renderer::NativeWindow window_;
         am::renderer::Dx12Renderer renderer_;
         am::renderer::UiDrawList uiDrawList_;

@@ -80,3 +80,22 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 
 - UE keeps the level viewport as one editor content region while Slate owns surrounding tabs, panels and input; switching editor modes does not recreate the rendering device.
 - ACE adaptation: Engine Mode remains inside the existing top-level HWND and reuses the proven single-HWND DX12/D2D viewport composition. Only panels with real data are exposed, and the AI-specific telemetry overlay is deliberately excluded from the editor viewport.
+
+## M2.4 - editor camera speed
+
+- `Editor/UnrealEd/Public/Settings/EditorViewportSettings.h` separates current/minimum/maximum camera speed and relative speed settings.
+- `Editor/UnrealEd/Private/EditorViewportClient.cpp` changes editor speed multiplicatively rather than by a world-unit linear increment.
+- ACE adaptation: the same multiplicative/logarithmic principle is extended with event-time wheel momentum, strict `0.0001`–`100000` limits and a single property shared by direct entry and viewport navigation.
+
+## M2.5 - command-driven editor chrome
+
+- UE menu/toolbar widgets consume shared `FUICommandInfo`/`FUICommandList` bindings with dynamic checked/enabled state.
+- ACE adaptation: the visible `Window`, `View`, `Help` menus, toolbar and shortcuts all consume `CommandRegistry`. Menus with no implemented backend are omitted entirely.
+
+## M3.1 - Content mount and Asset Registry
+
+- `Runtime/AssetRegistry/Public/AssetRegistry/AssetRegistryState.h`: disk-cache state is separate from query views and supports indexed enumeration by path/name/class.
+- `Runtime/CoreUObject/Public/AssetRegistry/AssetData.h`: transient asset metadata is distinct from serialized package contents and the cache format is explicitly versioned.
+- `Runtime/AssetRegistry/Private/AssetRegistry.cpp`: missing mounted content directories are created before installing directory watches; directory changes include folder events.
+- `Developer/DirectoryWatcher/Public/IDirectoryWatcher.h`: watcher output distinguishes add/modify/remove/rescan-required and is consumed through a tick boundary.
+- ACE adaptation: the initial registry is intentionally smaller and filesystem-oriented, but keeps mounted virtual identity, transient indexed records, a versioned external cache and safe full-rescan recovery. M3.2 will add one coarse `Content/` watch with a bounded change queue and rescan-required fallback, matching UE's warning against excessive granular watchers.

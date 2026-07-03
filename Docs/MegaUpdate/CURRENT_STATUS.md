@@ -4,9 +4,9 @@
 
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
-- Macro milestone: M2 - main Engine editor shell (complete after M2.5)
-- Mini-milestone: M2.5 - functional editor command surface (complete; ready to commit)
-- Latest known-good commit: `2aa7805` (`M2.4: add premium camera speed controls`)
+- Macro milestone: M3 - content and asset foundation
+- Mini-milestone: M3.1 - sandboxed Content mount and Asset Registry (complete; ready to commit)
+- Latest known-good commit: `5886ef1` (`M2.5: add functional editor command surface`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -52,10 +52,16 @@
 - Added a compact functional toolbar for AI return, camera reset, console, Outliner, Details and shortcut help.
 - Menus paint as the final editor overlay, participate in DX12/D2D composition policy and close on Escape, outside click or focus loss.
 - Shortcut Help now owns pointer/Escape priority over Engine Mode instead of leaking interaction into the viewport beneath it.
+- Added a runtime-created, physically isolated `Content/` mount exposed only as `/Game`.
+- Added a versioned Asset Registry snapshot with stable GUID lookup, virtual-path lookup, type metadata, file size/time and folder counts.
+- Persisted registry identity atomically under `Build/Editor`, outside user Content; the Content root remains completely empty on a new project.
+- Added strict supported-extension classification and exclusion for unsupported, hidden, system, internal and symlink entries.
+- Added deterministic sorting, generation counters, rescans and safe recovery from corrupt registry state with an explicit warning.
+- Wired Asset Registry initialization into runtime startup before the window/editor is exposed.
 
 ## Next action
 
-Commit and push M2.5, then begin M3 with the sandboxed empty `Content/` root and a real incremental asset registry before exposing Content Browser.
+Commit and push M3.1, then add the UE-inspired directory watcher/change queue and incremental registry deltas before exposing Content Browser.
 
 ## Existing baseline findings
 
@@ -99,3 +105,5 @@ Commit and push M2.5, then begin M3 with the sandboxed empty `Content/` root and
 - M2.4 `validate_ace_engine_mode_shell.ps1`, hidden Debug startup smoke, MSBuild Debug/Release and CMake Debug: PASS.
 - M2.5 editor shell gate: PASS (20 command/menu/overlay plus existing integration checks); command-registry regression: PASS (18 checks).
 - M2.5 hidden startup, MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_asset_registry.ps1`: PASS (24 mount, filtering, identity, restart, rescan and corruption checks, `/W4 /WX`).
+- M3.1 identity/path and archive regressions, runtime-empty-Content smoke, MSBuild Debug/Release and CMake Debug: PASS.

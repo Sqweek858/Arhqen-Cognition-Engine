@@ -134,3 +134,13 @@
 - Painted menu popups after viewport/panels and integrated their lifetime with parent composition, Escape, outside-click and focus-loss behavior.
 - Corrected Shortcut Help priority so its pointer and Escape input cannot leak into Engine Mode underneath.
 - Expanded the shell gate to 20 focused command/menu/overlay assertions and passed all build/startup configurations.
+
+## 2026-07-03 - M3.1 Content mount and Asset Registry
+
+- Added a runtime-created `Content/` root mounted exclusively as `/Game`, with registry state stored outside user content.
+- Added typed asset/folder records, stable GUID and virtual-path indexes, deterministic ordering and exact direct/descendant counts.
+- Added supported ACE, mesh-source and texture extension classification while excluding unsupported technical files.
+- Skipped dot/internal, Windows hidden/system, symlink and unsafe entries without following them outside the sandbox.
+- Added versioned atomic registry identity persistence and recoverable rebuild after corrupt state.
+- Wired the registry into application initialization and verified a fresh runtime leaves `Content/` at exactly zero entries.
+- Added 24 warning-as-error tests plus GUID/path/archive regressions and all build configurations.
