@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <string>
 
 namespace am::core
@@ -164,6 +165,28 @@ namespace am::core
         }
         logger_.info("Content Browser model synchronized at /Game generation=" +
             std::to_string(contentBrowserModel_.synchronizedGeneration()));
+
+        const auto editorFolder = editorScene_.createEntity(am::core::scene::EntityKind::Folder,
+            "Editor", editorScene_.rootId(), {}, &assetRegistryError);
+        const auto previewFolder = editorScene_.createEntity(am::core::scene::EntityKind::Folder,
+            "Runtime Preview", editorScene_.rootId(), {}, &assetRegistryError);
+        const auto editorCamera = editorFolder ? editorScene_.createEntity(am::core::scene::EntityKind::Camera,
+            "Editor Camera", *editorFolder, {}, &assetRegistryError) : std::nullopt;
+        const auto previewGeometry = previewFolder ? editorScene_.createEntity(am::core::scene::EntityKind::StaticMesh,
+            "Aquarium Dynamic Geometry", *previewFolder, {}, &assetRegistryError) : std::nullopt;
+        const auto referenceGrid = previewFolder ? editorScene_.createEntity(am::core::scene::EntityKind::Empty,
+            "Reference Grid", *previewFolder, {}, &assetRegistryError) : std::nullopt;
+        if (!editorFolder || !previewFolder || !editorCamera || !previewGeometry || !referenceGrid ||
+            !editorScene_.validate(&assetRegistryError))
+        {
+            logger_.error("Editor scene initialization failed: " + assetRegistryError);
+            return false;
+        }
+        editorSceneHierarchy_.setExpanded(editorScene_.rootId(), true);
+        editorSceneHierarchy_.setExpanded(*editorFolder, true);
+        editorSceneHierarchy_.setExpanded(*previewFolder, true);
+        editorSceneHierarchy_.rebuild(editorScene_, editorSceneSelection_);
+        logger_.info("Editor scene initialized entities=" + std::to_string(editorScene_.entityCount()));
         if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
         {
             logger_.error("Asset Directory Watcher initialization failed: " + assetRegistryError);
@@ -226,6 +249,7 @@ namespace am::core
         shellUi_.setLayoutProfilePath(layoutProfilePath);
         shellUi_.setVsyncEnabled(config_.getInt("ui.vsync", 0) != 0);
         shellUi_.setContentBrowserController(&contentBrowserController_);
+        shellUi_.setEditorScene(&editorScene_, &editorSceneSelection_, &editorSceneHierarchy_);
 
         if (!shellUi_.create(window_.hwnd(), window_.width(), window_.height(), &error))
         {

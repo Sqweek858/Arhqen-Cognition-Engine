@@ -9,6 +9,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Workspace\AceEditorWorkspaceController.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Viewport\AceCameraSpeedModel.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetRegistry.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Scene\AceSceneWorld.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetDirectoryWatcher.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetReferences.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Assets\AceAssetOperationService.h"><Filter></Filter></ClInclude>
@@ -220,6 +221,7 @@
     <ClCompile Include="Private\AquariumRender\AceAquariumEmbeddedDx12Viewport.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\AppConfig.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Assets\AceAssetPath.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Core\Scene\AceSceneWorld.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Application.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Logger.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Identity\AceGuid.cpp"><Filter></Filter></ClCompile>

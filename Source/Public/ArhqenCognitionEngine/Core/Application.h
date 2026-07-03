@@ -10,6 +10,7 @@
 #include "ArhqenCognitionEngine/Editor/Transactions/AceTransaction.h"
 #include "ArhqenCognitionEngine/Core/ExitCode.h"
 #include "ArhqenCognitionEngine/Core/Logger.h"
+#include "ArhqenCognitionEngine/Core/Scene/AceSceneWorld.h"
 #include "ArhqenCognitionEngine/Core/RuntimeClock.h"
 #include "ArhqenCognitionEngine/Core/TaskQueue.h"
 #include "ArhqenCognitionEngine/Renderer/Dx12Renderer.h"
@@ -51,6 +52,9 @@ namespace am::core
         am::editor::assets::AssetOperationService assetOperations_{};
         am::editor::content_browser::ContentBrowserModel contentBrowserModel_{};
         am::editor::content_browser::ContentBrowserController contentBrowserController_{};
+        am::core::scene::SceneWorld editorScene_{};
+        am::core::scene::SceneSelection editorSceneSelection_{};
+        am::core::scene::SceneHierarchyModel editorSceneHierarchy_{};
         am::renderer::NativeWindow window_;
         am::renderer::Dx12Renderer renderer_;
         am::renderer::UiDrawList uiDrawList_;

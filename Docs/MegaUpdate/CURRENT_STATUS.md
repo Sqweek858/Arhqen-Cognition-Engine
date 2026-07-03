@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.5 - functional D2D Content Browser drawer (complete; ready to commit)
-- Latest known-good commit: `899dcaf` (`M3.4: add Content Browser model`)
+- Mini-milestone: M3.6 - scene/world foundation and real Outliner/Details (complete; ready to commit)
+- Latest known-good commit: `3ef9ed1` (`M3.5: add functional Content Browser drawer`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -87,10 +87,18 @@
 - Wired Content Browser Undo/Redo to the central asset transaction history while keeping destructive delete unexposed until confirmation UI exists.
 - Added strict UTF-8/UTF-16 conversion for user asset names and responsive narrow/tiny drawer geometry.
 - Kept Material creation and asset activation absent until their real formats/editors exist; the visible Add menu contains only functional actions.
+- Added a stable-GUID scene world with typed entities, parent/child hierarchy, asset references, visibility, lock state and full double-precision transforms.
+- Added validated create/remove-subtree/reparent/rename/transform operations with cycle, depth, UTF-8, finite-number and root invariants.
+- Added a versioned, checksummed, bounded and atomic `.acescene` archive with strict corruption/malformed-payload rejection.
+- Added indexed parent-to-children lookup so broad Outliner projection is linear rather than repeatedly scanning the complete world.
+- Added multi-selection with primary entity reconciliation and a searchable expand/collapse hierarchy projection.
+- Replaced hardcoded Engine Outliner rows with the real hierarchy model, pointer selection, expand/collapse and bounded wheel scrolling.
+- Replaced hardcoded Details rows with selected entity label, kind, GUID, transform, visibility, lock and optional asset GUID.
+- The editor camera entity follows the live viewport camera while the transient preview world remains isolated from empty user Content.
 
 ## Next action
 
-Commit and push M3.5, then begin M3.6 scene/world foundation: stable scene entities, serialization, hierarchy projection and real selection/details data before exposing object editing.
+Commit and push M3.6, then begin M3.7 viewport object interaction: scene picking, shared selection, transform transaction controller and Move/Rotate/Scale gizmo foundations.
 
 ## Existing baseline findings
 
@@ -147,3 +155,6 @@ Commit and push M3.5, then begin M3.6 scene/world foundation: stable scene entit
 - `validate_ace_content_browser_controller.ps1`: PASS (24 real-filesystem action, GUID, extension, selection and Undo/Redo checks, `/W4 /WX`).
 - Expanded Engine shell integration: PASS (30 routes, command, paint-order, Unicode, responsive-layout and anti-placeholder checks).
 - M3.5 model/controller/shell regressions, hidden empty-Content startup and MSBuild Debug/Release plus CMake Debug: PASS.
+- `validate_ace_scene_world.ps1`: PASS (36 identity, hierarchy, transform, selection, search, archive, corruption and scale checks, `/W4 /WX`).
+- Scene hierarchy scale gate: 20,001 projected rows under five seconds PASS with indexed child lookup.
+- M3.6 expanded shell gate (33 checks), hidden six-entity editor-scene/empty-Content startup and all builds: PASS.

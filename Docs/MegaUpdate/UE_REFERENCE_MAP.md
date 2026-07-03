@@ -131,3 +131,10 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - UE keeps Content Browser item actions behind data-source/Asset Tools operations and uses temporary creation/rename contexts rather than mutating files from Slate paint code.
 - UE's Content Drawer is a docked editor surface with shared command bindings and keyboard focus, not a separate renderer window.
 - ACE adaptation: `ContentBrowserController` is the action boundary; the D2D drawer consumes only controller/model state. Ctrl+Space toggles the existing workspace tab, inline edits commit through validated operations, and focus prevents browser shortcuts from leaking into the viewport. Only backed actions are painted.
+
+## M3.6 - scene world and editor hierarchy
+
+- `Runtime/Engine/Classes/Engine/World.h` and `GameFramework/Actor.h` separate world ownership, stable actor identity/labels, transforms and attachment hierarchy.
+- `Editor/UnrealEd/Private/EditorActor.cpp` routes attachment and label changes through validated editor operations; actor children are enumerated recursively for hierarchy actions.
+- `Editor/UnrealEd/Private/EditorActorFolders.cpp` maintains folder state as world/editor data and broadcasts hierarchy changes rather than deriving ownership from painted rows.
+- ACE adaptation: `SceneWorld` owns GUID entities and validated hierarchy, `SceneSelection` owns selection identity, and `SceneHierarchyModel` projects indexed children for the D2D Outliner. `.acescene` persistence uses ACE's bounded archive rather than serializing widget state. Details is a read-only projection in this slice; transform transactions/gizmos follow in M3.7.

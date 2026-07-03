@@ -60,6 +60,7 @@
 #include "ArhqenCognitionEngine/Editor/Viewport/AceCameraSpeedModel.h"
 #include "ArhqenCognitionEngine/Editor/Commands/AceCommandRegistry.h"
 #include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserController.h"
+#include "ArhqenCognitionEngine/Core/Scene/AceSceneWorld.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DDrawCommandBuffer.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DUiDebugOverlay.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DAquariumTelemetryWidgets.h"
@@ -116,6 +117,9 @@ namespace am::ui
         void setLayoutProfilePath(std::filesystem::path path);
         void setVsyncEnabled(bool enabled);
         void setContentBrowserController(am::editor::content_browser::ContentBrowserController* controller) noexcept;
+        void setEditorScene(am::core::scene::SceneWorld* world,
+                            am::core::scene::SceneSelection* selection,
+                            am::core::scene::SceneHierarchyModel* hierarchy) noexcept;
         void setRuntimeFrameDeltaSeconds(double deltaSeconds);
         void flushPendingPaint();
         bool create(HWND parent, int width, int height, std::string* error);
@@ -403,6 +407,18 @@ namespace am::ui
         am::editor::CameraSpeedModel cameraSpeedModel_{};
         am::editor::commands::CommandRegistry engineCommandRegistry_{};
         am::editor::content_browser::ContentBrowserController* contentBrowserController_ = nullptr;
+        am::core::scene::SceneWorld* editorScene_ = nullptr;
+        am::core::scene::SceneSelection* editorSceneSelection_ = nullptr;
+        am::core::scene::SceneHierarchyModel* editorSceneHierarchy_ = nullptr;
+        struct EngineOutlinerHit
+        {
+            am::core::Guid id{};
+            UiRect row{};
+            UiRect expander{};
+        };
+        UiRect engineOutlinerContentRect_{};
+        std::vector<EngineOutlinerHit> engineOutlinerHits_{};
+        float engineOutlinerScroll_ = 0.0f;
         enum class ContentBrowserEditMode : std::uint8_t { None, Search, CreateFolder, Rename };
         struct ContentBrowserTreeHit
         {

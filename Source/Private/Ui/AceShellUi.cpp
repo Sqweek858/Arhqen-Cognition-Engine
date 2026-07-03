@@ -463,6 +463,17 @@ namespace am::ui
         contentBrowserController_ = controller;
     }
 
+    void AceShellUi::setEditorScene(am::core::scene::SceneWorld* world,
+                                    am::core::scene::SceneSelection* selection,
+                                    am::core::scene::SceneHierarchyModel* hierarchy) noexcept
+    {
+        editorScene_ = world;
+        editorSceneSelection_ = selection;
+        editorSceneHierarchy_ = hierarchy;
+        if (editorScene_ && editorSceneSelection_ && editorSceneHierarchy_)
+            editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
+    }
+
     void AceShellUi::setRuntimeFrameDeltaSeconds(double deltaSeconds)
     {
         runtimeFrameDeltaSeconds_ = std::clamp(deltaSeconds, 0.0, 1.0);
@@ -855,6 +866,15 @@ namespace am::ui
                     ctx, static_cast<float>(p.x), static_cast<float>(p.y), wheel))
                 {
                     invalidateRect(contentBrowserRect_);
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+                if (engineEditorModeActive_ && engineOutlinerContentRect_.contains(
+                    static_cast<float>(p.x), static_cast<float>(p.y)))
+                {
+                    engineOutlinerScroll_ = std::max(0.0f,
+                        engineOutlinerScroll_ - static_cast<float>(wheel) * 0.28f);
+                    invalidateRect(engineOutlinerContentRect_);
                     if (handled) { *handled = true; }
                     return 0;
                 }
@@ -1478,6 +1498,12 @@ namespace am::ui
                 if (engineEditorModeActive_ && contentBrowserVisible() && contentBrowserRect_.contains(x, y))
                 {
                     invalidateRect(contentBrowserRect_);
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
+                if (engineEditorModeActive_ && engineOutlinerContentRect_.contains(x, y))
+                {
+                    invalidateRect(engineOutlinerContentRect_);
                     if (handled) { *handled = true; }
                     return 0;
                 }
@@ -6091,6 +6117,25 @@ namespace am::ui
         auto ctx = makeContext();
         if (handleContentBrowserMouseDown(ctx, x, y, clickCount)) return true;
         contentBrowserFocused_ = false;
+        if (editorScene_ && editorSceneSelection_ && editorSceneHierarchy_ && engineOutlinerContentRect_.contains(x, y))
+        {
+            for (const auto& hit : engineOutlinerHits_)
+            {
+                if (!hit.row.contains(x, y)) continue;
+                const bool hasChildren = !editorScene_->childrenOf(hit.id).empty();
+                if (hasChildren && (hit.expander.contains(x, y) || clickCount >= 2))
+                    editorSceneHierarchy_->setExpanded(hit.id, !editorSceneHierarchy_->isExpanded(hit.id));
+                const auto keyboard = D2DKeyboardState::current();
+                (void)editorSceneSelection_->select(*editorScene_, hit.id,
+                    keyboard.ctrl ? am::core::scene::SceneSelectionMode::Toggle :
+                        am::core::scene::SceneSelectionMode::Replace);
+                editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
+                return true;
+            }
+            editorSceneSelection_->clear();
+            editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
+            return true;
+        }
         std::string error;
         if (engineWorkspaceController_.pointerDown(x, y, &error))
         {
@@ -6172,12 +6217,6 @@ namespace am::ui
         }
 
         const auto primitives = aquariumSceneAdapter_.BuildPrimitives(aquariumController_, false);
-        std::array<std::size_t, 7> primitiveCounts{};
-        for (const auto& primitive : primitives)
-        {
-            const auto index = static_cast<std::size_t>(primitive.Kind);
-            if (index < primitiveCounts.size()) ++primitiveCounts[index];
-        }
 
         auto renderRows = [&](const char* nodeId, const std::vector<std::wstring>& rows)
         {
@@ -6197,25 +6236,99 @@ namespace am::ui
             if (ctx.target) ctx.target->PopAxisAlignedClip();
         };
 
-        renderRows("stack.outliner", {
-            L"Scene",
-            L"  Editor Camera",
-            L"  Dynamic Meshes (1)",
-            L"  Blocks (" + std::to_wstring(primitiveCounts[static_cast<std::size_t>(ace::aquarium_render::AceAqRenderPrimitiveKind::Block)]) + L")",
-            L"  Tiles (" + std::to_wstring(primitiveCounts[static_cast<std::size_t>(ace::aquarium_render::AceAqRenderPrimitiveKind::Tile)]) + L")",
-            L"  Grid lines (" + std::to_wstring(primitiveCounts[static_cast<std::size_t>(ace::aquarium_render::AceAqRenderPrimitiveKind::GridLine)]) + L")"
-        });
-        const auto cameraPosition = aquariumSingleHwndCamera_.Position();
-        renderRows("stack.details", {
-            L"Renderer    DX12 + D2D composite",
-            L"Viewport    " + std::to_wstring(static_cast<int>(aquariumEmbeddedViewportRect_.width())) + L" x " +
-                std::to_wstring(static_cast<int>(aquariumEmbeddedViewportRect_.height())),
-            L"Primitives  " + std::to_wstring(primitives.size()),
-            L"Camera X    " + std::to_wstring(cameraPosition.x),
-            L"Camera Y    " + std::to_wstring(cameraPosition.y),
-            L"Camera Z    " + std::to_wstring(cameraPosition.z),
-            L"Move speed  " + std::to_wstring(aquariumSingleHwndCamera_.MoveSpeed())
-        });
+        engineOutlinerHits_.clear();
+        engineOutlinerContentRect_ = makeUiRect(0, 0, 0, 0);
+        if (editorScene_ && editorSceneSelection_ && editorSceneHierarchy_)
+        {
+            for (const auto& entity : editorScene_->entities())
+            {
+                if (entity.kind != am::core::scene::EntityKind::Camera) continue;
+                const auto cameraPosition = aquariumSingleHwndCamera_.Position();
+                am::core::scene::Transform cameraTransform = entity.transform;
+                cameraTransform.location = {cameraPosition.x, cameraPosition.y, cameraPosition.z};
+                constexpr double radiansToDegrees = 57.29577951308232;
+                cameraTransform.rotationDegrees = {
+                    static_cast<double>(aquariumSingleHwndCamera_.Pitch()) * radiansToDegrees,
+                    static_cast<double>(aquariumSingleHwndCamera_.Yaw()) * radiansToDegrees, 0.0};
+                editorScene_->setTransform(entity.id, cameraTransform, nullptr);
+                break;
+            }
+            editorSceneSelection_->reconcile(*editorScene_);
+            editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
+            if (const auto* outlinerNode = geometry->findNode("stack.outliner"); outlinerNode && !outlinerNode->content.empty())
+            {
+                engineOutlinerContentRect_ = toUiRect(outlinerNode->content).inset({6.0f, 6.0f, 6.0f, 6.0f});
+                const float outlinerContentHeight = static_cast<float>(editorSceneHierarchy_->rows().size()) * 25.0f;
+                engineOutlinerScroll_ = std::clamp(engineOutlinerScroll_, 0.0f,
+                    std::max(0.0f, outlinerContentHeight - engineOutlinerContentRect_.height()));
+                if (ctx.target) ctx.target->PushAxisAlignedClip(engineOutlinerContentRect_.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+                float rowTop = engineOutlinerContentRect_.top - engineOutlinerScroll_;
+                for (const auto& row : editorSceneHierarchy_->rows())
+                {
+                    const UiRect rowRect = makeUiRect(engineOutlinerContentRect_.left, rowTop,
+                        engineOutlinerContentRect_.right, rowTop + 25.0f);
+                    if (rowRect.top > engineOutlinerContentRect_.bottom) break;
+                    if (rowRect.bottom < engineOutlinerContentRect_.top) { rowTop += 25.0f; continue; }
+                    const float indent = static_cast<float>(row.depth) * 14.0f;
+                    const UiRect expander = makeUiRect(rowRect.left + indent, rowRect.top,
+                        rowRect.left + indent + 18.0f, rowRect.bottom);
+                    engineOutlinerHits_.push_back({row.id, rowRect, expander});
+                    if (row.selected || rowRect.contains(mouseX_, mouseY_))
+                        D2DWidgetUtils::fillRounded(ctx, rowRect, 4.0f,
+                            row.selected ? ctx.brushes.panelSoft : ctx.brushes.panelElevated,
+                            row.selected ? ctx.brushes.accent : ctx.brushes.borderDim, row.selected ? 1.0f : 0.0f);
+                    if (row.hasChildren)
+                        D2DTextLayoutFoundation::Draw(ctx, row.expanded ? L"\x25BE" : L"\x25B8", FontRole::Small,
+                            expander, ctx.brushes.accent, D2DTextOverflowMode::Ellipsis,
+                            DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+                    D2DTextLayoutFoundation::Draw(ctx, widen(row.label), FontRole::Small,
+                        makeUiRect(expander.right + 2.0f, rowRect.top, rowRect.right - 86.0f, rowRect.bottom),
+                        row.selected ? ctx.brushes.text : ctx.brushes.textDim, D2DTextOverflowMode::Ellipsis,
+                        DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+                    D2DTextLayoutFoundation::Draw(ctx,
+                        widen(std::string(am::core::scene::SceneWorld::kindName(row.kind))), FontRole::Small,
+                        makeUiRect(rowRect.right - 82.0f, rowRect.top, rowRect.right - 6.0f, rowRect.bottom),
+                        ctx.brushes.muted, D2DTextOverflowMode::Ellipsis,
+                        DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+                    rowTop += 25.0f;
+                }
+                if (ctx.target) ctx.target->PopAxisAlignedClip();
+            }
+        }
+
+        std::vector<std::wstring> detailRows;
+        const auto* selectedEntity = editorScene_ && editorSceneSelection_ ?
+            editorSceneSelection_->primaryEntity(*editorScene_) : nullptr;
+        if (selectedEntity)
+        {
+            detailRows = {
+                L"Name        " + widen(selectedEntity->label),
+                L"Type        " + widen(std::string(am::core::scene::SceneWorld::kindName(selectedEntity->kind))),
+                L"Location    " + std::to_wstring(selectedEntity->transform.location.x) + L", " +
+                    std::to_wstring(selectedEntity->transform.location.y) + L", " + std::to_wstring(selectedEntity->transform.location.z),
+                L"Rotation    " + std::to_wstring(selectedEntity->transform.rotationDegrees.x) + L", " +
+                    std::to_wstring(selectedEntity->transform.rotationDegrees.y) + L", " + std::to_wstring(selectedEntity->transform.rotationDegrees.z),
+                L"Scale       " + std::to_wstring(selectedEntity->transform.scale.x) + L", " +
+                    std::to_wstring(selectedEntity->transform.scale.y) + L", " + std::to_wstring(selectedEntity->transform.scale.z),
+                std::wstring(L"Visible     ") + (selectedEntity->visible ? L"Yes" : L"No"),
+                std::wstring(L"Locked      ") + (selectedEntity->locked ? L"Yes" : L"No"),
+                L"Entity GUID " + widen(selectedEntity->id.toString())
+            };
+            if (selectedEntity->assetId.isValid()) detailRows.push_back(L"Asset GUID  " + widen(selectedEntity->assetId.toString()));
+        }
+        else
+        {
+            detailRows = {
+                L"Scene       No entity selected",
+                L"Entities    " + std::to_wstring(editorScene_ ? editorScene_->entityCount() : 0),
+                L"Renderer    DX12 + D2D composite",
+                L"Viewport    " + std::to_wstring(static_cast<int>(aquariumEmbeddedViewportRect_.width())) + L" x " +
+                    std::to_wstring(static_cast<int>(aquariumEmbeddedViewportRect_.height())),
+                L"Primitives  " + std::to_wstring(primitives.size()),
+                L"Move speed  " + std::to_wstring(aquariumSingleHwndCamera_.MoveSpeed())
+            };
+        }
+        renderRows("stack.details", detailRows);
 
         if (const auto* contentNode = geometry->findNode("stack.content"))
             renderContentBrowser(ctx, toUiRect(contentNode->content));

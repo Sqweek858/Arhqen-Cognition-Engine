@@ -28,6 +28,7 @@ int main()
 {
     const std::string shell = read("Source/Private/Ui/AceShellUi.cpp");
     const std::string header = read("Source/Public/ArhqenCognitionEngine/Ui/AceShellUi.h");
+    const std::string application = read("Source/Private/Core/Application.cpp");
     const auto renderStart = shell.find("void AceShellUi::renderEngineEditorMode");
     const auto renderEnd = shell.find("void AceShellUi::renderAquariumFullScreen3DMode", renderStart);
     const std::string editorRender = renderStart != std::string::npos && renderEnd != std::string::npos
@@ -44,14 +45,15 @@ int main()
         "engine_mode_suppresses_aquarium_telemetry");
     check(editorRender.find("snapshot.scenarioName") == std::string::npos &&
         editorRender.find("snapshot.plannerName") == std::string::npos &&
-        editorRender.find("World:") == std::string::npos,
+        editorRender.find("L\"World:") == std::string::npos,
         "engine_panels_do_not_expose_ai_scenario_identity");
     check(editorRender.find("renderContentBrowser") != std::string::npos &&
         header.find("ContentBrowserController* contentBrowserController_") != std::string::npos,
         "content_browser_is_exposed_through_real_controller");
-    check(editorRender.find("Scene") != std::string::npos && editorRender.find("Editor Camera") != std::string::npos &&
-        editorRender.find("Move speed") != std::string::npos,
-        "engine_panels_show_real_generic_scene_and_camera_data");
+    check(editorRender.find("editorSceneHierarchy_->rows()") != std::string::npos &&
+        editorRender.find("primaryEntity(*editorScene_)") != std::string::npos &&
+        application.find("\"Editor Camera\"") != std::string::npos,
+        "engine_panels_show_real_scene_hierarchy_and_details_data");
     check(shell.find("L\"Engine\"") != std::string::npos && shell.find("L\"AI Details\"") != std::string::npos,
         "engine_and_ai_mode_switches_are_visible");
     check(shell.find("EditorWorkspaceLayout::load") != std::string::npos &&
@@ -119,6 +121,17 @@ int main()
         "content_browser_paints_before_final_menu_overlay");
     check(shell.find("New Material") == std::string::npos,
         "unfinished_material_creation_is_not_exposed");
+    check(header.find("SceneWorld* editorScene_") != std::string::npos &&
+        header.find("SceneSelection* editorSceneSelection_") != std::string::npos &&
+        header.find("SceneHierarchyModel* editorSceneHierarchy_") != std::string::npos,
+        "engine_shell_consumes_scene_model_selection_and_hierarchy");
+    check(editorRender.find("SceneWorld::kindName") != std::string::npos &&
+        editorRender.find("Entity GUID") != std::string::npos &&
+        editorRender.find("transform.location") != std::string::npos,
+        "details_panel_projects_real_entity_identity_and_transform");
+    check(shell.find("engineOutlinerScroll_") != std::string::npos &&
+        shell.find("editorSceneSelection_->select") != std::string::npos,
+        "outliner_has_bounded_scroll_and_real_selection");
 
     std::cout << (failures == 0 ? "PASS|" : "FAIL|") << "ace_engine_mode_shell_probe\n";
     return failures == 0 ? 0 : 1;

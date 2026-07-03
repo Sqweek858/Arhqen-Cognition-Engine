@@ -195,3 +195,15 @@
 - Preserved DX12/D2D layer order by painting the drawer before the final menu overlay and routing its input before viewport interaction.
 - Deliberately omitted New Material, asset opening and destructive Delete because their editor/confirmation backends are not complete yet.
 - Added 24 controller checks and expanded shell coverage to 30 checks; all build and runtime-empty-content gates pass.
+
+## 2026-07-03 - M3.6 scene/world foundation
+
+- Added stable-GUID typed scene entities with parent hierarchy, asset identity, visibility, lock and double-precision transforms.
+- Added invariant-checked create, subtree remove, reparent, rename and property mutation with atomic rejection of cycles, excessive depth and invalid values.
+- Added a versioned `.acescene` archive using the existing checksummed container and atomic file replacement.
+- Added indexed parent-to-children queries plus selection reconciliation and searchable expand/collapse hierarchy projection.
+- Verified a 20,001-row broad hierarchy remains bounded instead of degrading to repeated whole-world scans.
+- Replaced hardcoded Outliner content with the live scene model, selection, expansion and wheel scrolling.
+- Replaced hardcoded Details content with the selected entity's type, GUID, transform, visibility, lock and asset reference.
+- Added a transient six-entity editor preview world and synchronized its camera entity with the real viewport without polluting `Content/`.
+- Added 36 warning-as-error scene checks, expanded shell coverage to 33 checks and passed all build/runtime gates.
