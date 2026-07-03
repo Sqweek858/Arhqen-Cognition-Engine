@@ -191,6 +191,11 @@ namespace am::core
             logger_.error("Editor scene transaction controller initialization failed: " + assetRegistryError);
             return false;
         }
+        if (!editorTransformGizmo_.initialize(editorScene_, editorSceneEdits_, &assetRegistryError))
+        {
+            logger_.error("Editor transform gizmo initialization failed: " + assetRegistryError);
+            return false;
+        }
         logger_.info("Editor scene initialized entities=" + std::to_string(editorScene_.entityCount()));
         if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
         {

@@ -9,6 +9,7 @@
 #include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserController.h"
 #include "ArhqenCognitionEngine/Editor/Transactions/AceTransaction.h"
 #include "ArhqenCognitionEngine/Editor/Scene/AceSceneEditController.h"
+#include "ArhqenCognitionEngine/Editor/Scene/AceTransformGizmo.h"
 #include "ArhqenCognitionEngine/Core/ExitCode.h"
 #include "ArhqenCognitionEngine/Core/Logger.h"
 #include "ArhqenCognitionEngine/Core/Scene/AceSceneWorld.h"
@@ -57,6 +58,7 @@ namespace am::core
         am::core::scene::SceneSelection editorSceneSelection_{};
         am::core::scene::SceneHierarchyModel editorSceneHierarchy_{};
         am::editor::scene::SceneEditController editorSceneEdits_{};
+        am::editor::scene::TransformGizmo editorTransformGizmo_{};
         am::renderer::NativeWindow window_;
         am::renderer::Dx12Renderer renderer_;
         am::renderer::UiDrawList uiDrawList_;

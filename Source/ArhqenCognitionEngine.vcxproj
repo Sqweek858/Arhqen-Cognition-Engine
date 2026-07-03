@@ -28,6 +28,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\ContentBrowser\AceContentBrowserModel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\ContentBrowser\AceContentBrowserController.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Scene\AceSceneEditController.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Scene\AceTransformGizmo.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Input\AceInputRouter.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Commands\AceCommandRegistry.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Transactions\AceTransaction.h" />
@@ -192,6 +193,7 @@
     <ClCompile Include="Private\Editor\ContentBrowser\AceContentBrowserModel.cpp" />
     <ClCompile Include="Private\Editor\ContentBrowser\AceContentBrowserController.cpp" />
     <ClCompile Include="Private\Editor\Scene\AceSceneEditController.cpp" />
+    <ClCompile Include="Private\Editor\Scene\AceTransformGizmo.cpp" />
     <ClCompile Include="Private\Renderer\Core\AceRenderer.cpp" />
     <ClCompile Include="Private\Renderer\Scene\AceRenderScene.cpp" />
     <ClCompile Include="Private\Renderer\Scene\AceAquariumGpuViewportRenderer.cpp" />

@@ -216,3 +216,13 @@
 - Live drag updates create no history entries; mouse-up creates exactly one and Escape restores every pre-drag transform.
 - Deduplicated target IDs, rejected invalid targets before tracking and atomically rolled back partial invalid updates.
 - Added 26 warning-as-error lifecycle checks and passed scene regression plus all build configurations.
+
+## 2026-07-03 - M3.7b transform gizmo math foundation
+
+- Added Translate, Rotate and Scale gizmo modes with X/Y/Z, plane and uniform axis masks.
+- Added accumulated-delta evaluation so live updates always derive from the drag-start transforms without numeric drift.
+- Added world/local translation bases and symmetric translation/rotation/scale snapping.
+- Routed multi-selection gizmo updates through the single-transaction tracking lifecycle from M3.7a.
+- Added a nonzero scale floor to prevent accidental singular transforms.
+- Kept visual handles and input hidden pending real hit proxies and screen-to-world math.
+- Added 22 warning-as-error gizmo checks and passed all build configurations.

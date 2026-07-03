@@ -144,3 +144,8 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - `Editor/UnrealEd/Public/EditorModeManager.h`, `MouseDeltaTracker.h` and `LevelEditorViewport.cpp` separate StartTracking, repeated InputDelta and TrackingStopped boundaries.
 - UE starts one transaction for a widget drag and finalizes it at tracking stop instead of transacting every mouse delta.
 - ACE adaptation: `SceneEditController` owns the same lifecycle over `SceneWorld`. It applies live multi-target values, records one before/after operation at commit, restores exact pre-drag values on cancel, and leaves paint/input/gizmo math for M3.7b.
+
+## M3.7b - transform gizmo math
+
+- UE's editor widget applies translate/rotate/scale deltas through mode tools while the mouse delta tracker owns accumulated tracking state and snapping policy.
+- ACE adaptation: `TransformGizmo` evaluates every update from immutable drag-start transforms, filters by axis/plane, converts local translation through the entity Euler basis and snaps each domain independently. It delegates state mutation and history to `SceneEditController`; visible handles wait for real picking.

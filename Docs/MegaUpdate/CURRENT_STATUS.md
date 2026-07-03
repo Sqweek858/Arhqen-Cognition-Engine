@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.7a - transactional scene transform lifecycle (complete; ready to commit)
-- Latest known-good commit: `41bcf49` (`M3.6: add scene world and real Outliner`)
+- Mini-milestone: M3.7b - transform gizmo math foundation (complete; ready to commit)
+- Latest known-good commit: `a44b0a8` (`M3.7a: add transactional scene transforms`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -100,10 +100,15 @@
 - Interactive targets are deduplicated and root, missing or locked entities are rejected before a transaction starts.
 - Invalid multi-entity updates roll back every already-applied target atomically; no-op drags create no history entry.
 - Transform and rename Undo/Redo restore exact before/after values without per-frame history spam.
+- Added a transform gizmo model with Translate, Rotate and Scale modes over single axes, planes and uniform XYZ.
+- Added world/local translation basis conversion, accumulated-delta evaluation and symmetric snapping for positive/negative values.
+- Added translation, rotation-degree and scale-fraction snap settings with independent enablement and valid-step guards.
+- Added multi-selection application through the scene edit lifecycle and a nonzero scale floor to avoid singular transforms.
+- Kept gizmo drawing/picking unexposed until viewport hit proxies and mouse-to-world delta conversion are complete.
 
 ## Next action
 
-Commit and push M3.7a, then implement M3.7b viewport picking and visible Move/Rotate/Scale gizmo interaction over this verified tracking lifecycle.
+Commit and push M3.7b, then implement viewport hit proxies/ray picking and screen-to-world gizmo deltas before exposing the visible Move/Rotate/Scale controls.
 
 ## Existing baseline findings
 
@@ -165,3 +170,5 @@ Commit and push M3.7a, then implement M3.7b viewport picking and visible Move/Ro
 - M3.6 expanded shell gate (33 checks), hidden six-entity editor-scene/empty-Content startup and all builds: PASS.
 - `validate_ace_scene_edit_controller.ps1`: PASS (26 rename, direct/multi transform, lock, atomic rollback, commit/cancel and Undo/Redo checks, `/W4 /WX`).
 - M3.7a full scene regression and MSBuild Debug/Release plus CMake Debug: PASS.
+- `validate_ace_transform_gizmo.ps1`: PASS (22 axis, snapping, world/local, multi-target, commit/cancel and scale-safety checks, `/W4 /WX`).
+- M3.7b MSBuild Debug/Release plus CMake Debug: PASS.

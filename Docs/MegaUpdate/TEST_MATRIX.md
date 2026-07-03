@@ -27,6 +27,7 @@ Populate exact commands/results during M0. Every mini-milestone adds or updates 
 | Content Browser drawer | 24 controller + 30 shell checks PASS | Registry/operations/D2D command binding PASS | PASS | PASS | Hidden empty-root startup PASS | Retained model; bounded scroll; responsive geometry | M3.5 ready |
 | Scene world / Outliner / Details | 36 scene + 33 shell checks PASS | Live hierarchy/selection/details binding PASS | PASS | PASS | Six-entity startup; Content empty PASS | 20,001 hierarchy rows under 5 s | M3.6 ready |
 | Scene transform transactions | 26 tracking/rollback/Undo checks PASS | Shared central transaction manager PASS | PASS | PASS | UI intentionally not exposed yet | One history entry per completed drag | M3.7a ready |
+| Transform gizmo math | 22 axis/snap/local/scale checks PASS | Scene edit controller binding PASS | PASS | PASS | Handles intentionally not exposed yet | Accumulated start-relative deltas; no drift | M3.7b ready |
 | Asset operations / scenes | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Materials/shaders | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Rendering/GI | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
