@@ -4,9 +4,9 @@
 
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
-- Macro milestone: M2 - main Engine editor shell
-- Mini-milestone: M2.4 - shared premium camera speed (complete; ready to commit)
-- Latest known-good commit: `aae2b4a` (`M2.3b: integrate visible Engine editor mode`)
+- Macro milestone: M2 - main Engine editor shell (complete after M2.5)
+- Mini-milestone: M2.5 - functional editor command surface (complete; ready to commit)
+- Latest known-good commit: `2aa7805` (`M2.4: add premium camera speed controls`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -47,10 +47,15 @@
 - Added strict full-number parsing, Enter commit, Escape cancel, outside-click dismissal and synchronized direct/wheel values.
 - Preserved the tuned default movement response while scaling acceleration so high selected speeds are physically reachable.
 - Forced parent composition while the popup/feedback is active so D2D controls remain above the DX12 scene.
+- Added a dedicated editor command registry with live enabled/checked state, contextual shortcuts and repeat suppression.
+- Added real `Window`, `View` and `Help` menus; omitted File/Edit/Build/Tools until their scene, asset and shader backends exist.
+- Added a compact functional toolbar for AI return, camera reset, console, Outliner, Details and shortcut help.
+- Menus paint as the final editor overlay, participate in DX12/D2D composition policy and close on Escape, outside click or focus loss.
+- Shortcut Help now owns pointer/Escape priority over Engine Mode instead of leaking interaction into the viewport beneath it.
 
 ## Next action
 
-Commit and push M2.4, then implement the first functional editor command/menu/toolbar navigation slice without exposing unfinished tools.
+Commit and push M2.5, then begin M3 with the sandboxed empty `Content/` root and a real incremental asset registry before exposing Content Browser.
 
 ## Existing baseline findings
 
@@ -92,3 +97,5 @@ Commit and push M2.4, then implement the first functional editor command/menu/to
 - User visual smoke test confirmed the visible editor layout and splitter resize behavior; requested telemetry/scenario cleanup is included in this checkpoint.
 - `validate_ace_camera_speed.ps1`: PASS (32 warning-as-error model, routing, popup and reachable-speed checks).
 - M2.4 `validate_ace_engine_mode_shell.ps1`, hidden Debug startup smoke, MSBuild Debug/Release and CMake Debug: PASS.
+- M2.5 editor shell gate: PASS (20 command/menu/overlay plus existing integration checks); command-registry regression: PASS (18 checks).
+- M2.5 hidden startup, MSBuild Debug/Release and CMake Debug: PASS.

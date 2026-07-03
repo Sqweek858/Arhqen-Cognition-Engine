@@ -18,6 +18,7 @@ Populate exact commands/results during M0. Every mini-milestone adds or updates 
 | Workspace interaction | 31 capture/drag/cancel/commit checks PASS | Model + geometry controller integrated | PASS | PASS | Not exposed yet | One commit on release; none per move | M2.3a ready |
 | Visible Engine shell | 12 route/composition/exposure checks PASS | Workspace + single-HWND DX12/D2D integrated | PASS | PASS | User smoke PASS; cleanup applied | No renderer recreation on mode switch | M2.3b ready |
 | Premium camera speed | 32 model/routing/popup/reachable-speed checks PASS | AI + Engine viewport control integrated | PASS | PASS | Hidden startup PASS; user feel test pending | Event-time momentum; no frame-rate dependency | M2.4 ready |
+| Editor command surface | 20 shell/menu/overlay + 18 registry checks PASS | Shared menu/toolbar/shortcut backend | PASS | PASS | Own-HWND startup capture PASS; editor visual pending | No inactive tools; retained popup overlay | M2.5 ready |
 | Assets/scenes | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Materials/shaders | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Rendering/GI | TBD | TBD | TBD | TBD | TBD | TBD | Not started |

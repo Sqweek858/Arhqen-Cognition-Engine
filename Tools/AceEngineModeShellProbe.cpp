@@ -65,6 +65,30 @@ int main()
         "engine_splitter_capture_loss_is_recoverable");
     check(shell.find("if (!engineEditorModeActive_)\n        {\n            renderAquariumViewportHudLayer") != std::string::npos,
         "fast_viewport_path_also_suppresses_editor_telemetry");
+    check(header.find("CommandRegistry engineCommandRegistry_") != std::string::npos &&
+        shell.find("initializeEngineCommands();") != std::string::npos,
+        "editor_owns_initialized_command_registry");
+    check(shell.find("window.toggle_outliner") != std::string::npos &&
+        shell.find("window.toggle_details") != std::string::npos &&
+        shell.find("window.reset_layout") != std::string::npos,
+        "window_menu_commands_are_real");
+    check(shell.find("view.reset_camera") != std::string::npos &&
+        shell.find("view.camera_speed") != std::string::npos &&
+        shell.find("view.toggle_console") != std::string::npos,
+        "view_menu_commands_are_real");
+    check(shell.find("help.shortcuts") != std::string::npos && shell.find("help.about") != std::string::npos,
+        "help_menu_commands_are_real");
+    check(shell.find("engineCommandRegistry_.resolve(chord, {\"Editor\"})") != std::string::npos &&
+        shell.find("repeated && !command->repeatable") != std::string::npos,
+        "editor_shortcuts_use_context_and_repeat_policy");
+    check(editorRender.find("renderEngineCommandSurface(ctx, topBarHeight)") != std::string::npos,
+        "command_surface_paints_as_final_editor_overlay");
+    check(shell.find("commandIds = {\"window.toggle_outliner\", \"window.toggle_details\", \"window.reset_layout\"}") != std::string::npos &&
+        shell.find("commandIds = {\"view.reset_camera\", \"view.camera_speed\", \"view.toggle_console\"}") != std::string::npos,
+        "menus_expose_only_registered_backend_actions");
+    check(shell.find("!engineOpenMenu_.empty() ||") != std::string::npos &&
+        shell.find("editor-menu-open") != std::string::npos,
+        "editor_menus_join_dx12_overlay_policy");
 
     std::cout << (failures == 0 ? "PASS|" : "FAIL|") << "ace_engine_mode_shell_probe\n";
     return failures == 0 ? 0 : 1;

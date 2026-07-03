@@ -981,6 +981,8 @@ namespace am::ui
 
         case WM_CANCELMODE:
         case WM_KILLFOCUS:
+            if (cameraSpeedPopupOpen_) closeCameraSpeedPopup(false);
+            if (!engineOpenMenu_.empty()) closeEngineMenu();
             if (engineWorkspaceController_.draggingSplitter())
             {
                 std::string ignored;
@@ -1001,6 +1003,14 @@ namespace am::ui
         {
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
+
+            if (shortcutHelp_.visible())
+            {
+                shortcutHelp_.onMouseDown(x, y);
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
 
             if (environmentOpen_)
             {
@@ -1162,14 +1172,6 @@ namespace am::ui
                     if (handled) { *handled = true; }
                     return 0;
                 }
-            }
-
-            if (shortcutHelp_.visible())
-            {
-                shortcutHelp_.onMouseDown(x, y);
-                invalidate();
-                if (handled) { *handled = true; }
-                return 0;
             }
 
             if (toastCenter_.onMouseDown(x, y))
@@ -1598,6 +1600,28 @@ namespace am::ui
                 return 0;
             }
 
+            if (engineEditorModeActive_ && wParam == VK_ESCAPE && !engineOpenMenu_.empty())
+            {
+                closeEngineMenu();
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (shortcutHelp_.visible() && shortcutHelp_.onKeyDown(wParam))
+            {
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            const bool repeatedKey = (static_cast<std::uintptr_t>(lParam) & (std::uintptr_t{1} << 30u)) != 0;
+            if (handleEngineCommandShortcut(wParam, keyboard, repeatedKey))
+            {
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
             if (engineEditorModeActive_ && wParam == VK_ESCAPE && engineWorkspaceController_.draggingSplitter())
             {
                 std::string error;
@@ -1675,13 +1699,6 @@ namespace am::ui
             {
                 shortcutHelp_.toggle();
                 showToast(L"Help", shortcutHelp_.visible() ? L"Shortcut help opened." : L"Shortcut help closed.", D2DToastKind::Info);
-                invalidate();
-                if (handled) { *handled = true; }
-                return 0;
-            }
-
-            if (shortcutHelp_.visible() && shortcutHelp_.onKeyDown(wParam))
-            {
                 invalidate();
                 if (handled) { *handled = true; }
                 return 0;
@@ -2735,11 +2752,17 @@ namespace am::ui
             {L"F12", L"Diagnostics", L"Global"},
             {L"F9", L"UI debug overlay", L"Development"},
             {L"`", L"Docked engine log console", L"Development"},
+            {L"Ctrl+Shift+O", L"Toggle World Outliner", L"ACE Editor"},
+            {L"Ctrl+Shift+D", L"Toggle Details", L"ACE Editor"},
+            {L"Ctrl+0", L"Reset editor camera", L"ACE Editor"},
+            {L"Mouse wheel", L"Adaptive camera speed over viewport", L"ACE Editor"},
             {L"Esc", L"Close overlay", L"Global"},
             {L"Enter", L"Send", L"Input"},
             {L"/rename name", L"Rename active conversation", L"Workspaces"},
             {L"Mouse wheel", L"Scroll messages", L"Messages"}
         });
+
+        initializeEngineCommands();
 
         focus_.set(D2DFocusTarget::TextInput);
         statusBar_.setText(L"");
@@ -3016,6 +3039,10 @@ namespace am::ui
             return false;
         }
         if (settingsOpen_ || diagnostics_.visible() || shortcutHelp_.visible() || commandPalette_.active() || uiDebugOverlay_.Visible())
+        {
+            return false;
+        }
+        if (!engineOpenMenu_.empty())
         {
             return false;
         }
@@ -3429,6 +3456,15 @@ namespace am::ui
             aquariumManualConsumeRect_,
             aquariumManualPushRect_,
             cameraSpeedButtonRect_,
+            engineMenuWindowRect_,
+            engineMenuViewRect_,
+            engineMenuHelpRect_,
+            engineBackToAiRect_,
+            engineCameraResetRect_,
+            engineConsoleToggleRect_,
+            engineOutlinerToggleRect_,
+            engineDetailsToggleRect_,
+            engineShortcutHelpRect_,
             aquariumLeftResizeHandleRect_,
             aquariumRightResizeHandleRect_
         };
@@ -3449,6 +3485,11 @@ namespace am::ui
         if (aquariumLogScroll_.thumb.contains(x, y) || aquariumLogScroll_.track.contains(x, y))
         {
             return 101;
+        }
+
+        for (std::size_t i = 0; i < engineMenuRows_.size(); ++i)
+        {
+            if (engineMenuRows_[i].second.contains(x, y)) return 200 + static_cast<int>(i);
         }
 
         return -1;
@@ -3479,6 +3520,15 @@ namespace am::ui
             aquariumManualConsumeRect_,
             aquariumManualPushRect_,
             cameraSpeedButtonRect_,
+            engineMenuWindowRect_,
+            engineMenuViewRect_,
+            engineMenuHelpRect_,
+            engineBackToAiRect_,
+            engineCameraResetRect_,
+            engineConsoleToggleRect_,
+            engineOutlinerToggleRect_,
+            engineDetailsToggleRect_,
+            engineShortcutHelpRect_,
             aquariumLeftResizeHandleRect_,
             aquariumRightResizeHandleRect_
         };
@@ -3496,6 +3546,12 @@ namespace am::ui
         if (hotId == 101)
         {
             return aquariumLogScroll_.track;
+        }
+
+        if (hotId >= 200)
+        {
+            const std::size_t index = static_cast<std::size_t>(hotId - 200);
+            if (index < engineMenuRows_.size()) return engineMenuRows_[index].second;
         }
 
         return am::ui::makeUiRect(0, 0, 0, 0);
@@ -3534,6 +3590,11 @@ namespace am::ui
         }
 
         if (cameraSpeedPopupOpen_ && cameraSpeedPopupRect_.contains(x, y))
+        {
+            return true;
+        }
+
+        if (!engineOpenMenu_.empty() && engineMenuPopupRect_.contains(x, y))
         {
             return true;
         }
@@ -5222,6 +5283,8 @@ namespace am::ui
         std::string ignored;
         if (engineWorkspaceController_.draggingSplitter())
             engineWorkspaceController_.cancelPointerInteraction(&ignored);
+        closeEngineMenu();
+        if (cameraSpeedPopupOpen_) closeCameraSpeedPopup(false);
         engineEditorModeActive_ = false;
         aquarium3DModeActive_ = true;
         aquariumEmbeddedViewportVisible_ = true;
@@ -5240,34 +5303,263 @@ namespace am::ui
             showToast(L"Editor layout save failed", widen(error), D2DToastKind::Error);
     }
 
+    void AceShellUi::initializeEngineCommands()
+    {
+        if (engineCommandsInitialized_)
+        {
+            return;
+        }
+
+        using namespace am::editor::commands;
+        const Modifier ctrlShift = Modifier::Control | Modifier::Shift;
+        bool registered = true;
+        auto add = [&](CommandDescriptor descriptor)
+        {
+            std::string error;
+            if (!engineCommandRegistry_.registerCommand(std::move(descriptor), &error))
+            {
+                registered = false;
+            }
+        };
+
+        add({"editor.return_ai", L"AI Details", L"Return to the AI details workspace.", L"Editor", "Editor",
+            CommandType::Action, std::nullopt, [this]() { leaveEngineEditorMode(); }});
+        add({"window.toggle_outliner", L"World Outliner", L"Show or hide the real scene hierarchy panel.", L"Window", "Editor",
+            CommandType::Toggle, KeyChord{'O', ctrlShift}, [this]() {
+                std::string error;
+                const auto* tab = engineWorkspaceController_.layout().findTab("tab.outliner");
+                if (tab) engineWorkspaceController_.setTabVisible(tab->id, !tab->visible, &error);
+                commitEngineWorkspaceLayout();
+            }, {}, [this]() {
+                const auto* tab = engineWorkspaceController_.layout().findTab("tab.outliner");
+                return tab && tab->visible;
+            }});
+        add({"window.toggle_details", L"Details", L"Show or hide the selection details panel.", L"Window", "Editor",
+            CommandType::Toggle, KeyChord{'D', ctrlShift}, [this]() {
+                std::string error;
+                const auto* tab = engineWorkspaceController_.layout().findTab("tab.details");
+                if (tab) engineWorkspaceController_.setTabVisible(tab->id, !tab->visible, &error);
+                commitEngineWorkspaceLayout();
+            }, {}, [this]() {
+                const auto* tab = engineWorkspaceController_.layout().findTab("tab.details");
+                return tab && tab->visible;
+            }});
+        add({"window.reset_layout", L"Reset Layout", L"Restore the canonical editor panel layout.", L"Window", "Editor",
+            CommandType::Action, std::nullopt, [this]() {
+                std::string error;
+                engineWorkspaceController_.resetLayout(&error);
+                commitEngineWorkspaceLayout();
+            }});
+        add({"view.reset_camera", L"Reset Camera", L"Restore the editor camera position and orientation.", L"View", "Editor",
+            CommandType::Action, KeyChord{'0', Modifier::Control}, [this]() {
+                aquariumSingleHwndCamera_.Reset();
+                invalidateRect(aquariumEmbeddedViewportRect_);
+            }});
+        add({"view.camera_speed", L"Camera Speed...", L"Edit the shared logarithmic camera flight speed.", L"View", "Editor",
+            CommandType::Action, std::nullopt, [this]() { openCameraSpeedPopup(); }});
+        add({"view.toggle_console", L"Output Log / Console", L"Open or close the docked engine log console.", L"View", "Editor",
+            CommandType::Toggle, std::nullopt, [this]() { toggleEngineLogOverlay(); }, {},
+            [this]() { return engineLogOverlayVisible_; }});
+        add({"help.shortcuts", L"Editor Shortcuts", L"Show the active editor shortcut reference.", L"Help", "Editor",
+            CommandType::Action, KeyChord{VK_F1, Modifier::None}, [this]() {
+                shortcutHelp_.toggle();
+                requestParentCompositedViewportHold(24u, L"editor-shortcuts");
+            }});
+        add({"help.about", L"About ACE Editor", L"Show editor and renderer identity.", L"Help", "Editor",
+            CommandType::Action, std::nullopt, [this]() {
+                showToast(L"ACE Engine Editor", L"Native DX12 renderer + D2D editor shell.", D2DToastKind::Info);
+            }});
+
+        engineCommandsInitialized_ = registered;
+    }
+
+    bool AceShellUi::executeEngineCommand(std::string_view commandId)
+    {
+        initializeEngineCommands();
+        const bool executed = engineCommandRegistry_.execute(commandId);
+        if (executed)
+        {
+            closeEngineMenu();
+            invalidate();
+        }
+        return executed;
+    }
+
+    bool AceShellUi::handleEngineCommandShortcut(WPARAM key, const D2DKeyboardState& keyboard, bool repeated)
+    {
+        if (!engineEditorModeActive_ || cameraSpeedInputFocused_ ||
+            (engineLogOverlayVisible_ && engineLogOverlayInputFocused_))
+        {
+            return false;
+        }
+
+        using namespace am::editor::commands;
+        Modifier modifiers = Modifier::None;
+        if (keyboard.ctrl) modifiers = modifiers | Modifier::Control;
+        if (keyboard.shift) modifiers = modifiers | Modifier::Shift;
+        if (keyboard.alt) modifiers = modifiers | Modifier::Alt;
+        const KeyChord chord{static_cast<std::uint16_t>(key), modifiers};
+        const auto command = engineCommandRegistry_.resolve(chord, {"Editor"});
+        if (!command)
+        {
+            return false;
+        }
+        if (repeated && !command->repeatable)
+        {
+            return true;
+        }
+        return executeEngineCommand(command->id);
+    }
+
+    void AceShellUi::closeEngineMenu()
+    {
+        const bool wasOpen = !engineOpenMenu_.empty();
+        engineOpenMenu_.clear();
+        engineMenuRows_.clear();
+        engineMenuPopupRect_ = makeUiRect(0, 0, 0, 0);
+        if (wasOpen) requestParentCompositedViewportHold(12u, L"editor-menu-close");
+    }
+
+    bool AceShellUi::handleEngineCommandSurfaceClick(float x, float y)
+    {
+        auto toggleMenu = [this](std::string name)
+        {
+            if (engineOpenMenu_ == name) closeEngineMenu();
+            else
+            {
+                engineOpenMenu_ = std::move(name);
+                requestParentCompositedViewportHold(24u, L"editor-menu-open");
+            }
+        };
+
+        if (engineMenuWindowRect_.contains(x, y)) { toggleMenu("Window"); return true; }
+        if (engineMenuViewRect_.contains(x, y)) { toggleMenu("View"); return true; }
+        if (engineMenuHelpRect_.contains(x, y)) { toggleMenu("Help"); return true; }
+
+        if (!engineOpenMenu_.empty())
+        {
+            for (const auto& [commandId, rect] : engineMenuRows_)
+            {
+                if (rect.contains(x, y))
+                {
+                    executeEngineCommand(commandId);
+                    return true;
+                }
+            }
+            if (engineMenuPopupRect_.contains(x, y)) return true;
+            closeEngineMenu();
+        }
+
+        if (engineBackToAiRect_.contains(x, y)) return executeEngineCommand("editor.return_ai");
+        if (engineCameraResetRect_.contains(x, y)) return executeEngineCommand("view.reset_camera");
+        if (engineConsoleToggleRect_.contains(x, y)) return executeEngineCommand("view.toggle_console");
+        if (engineOutlinerToggleRect_.contains(x, y)) return executeEngineCommand("window.toggle_outliner");
+        if (engineDetailsToggleRect_.contains(x, y)) return executeEngineCommand("window.toggle_details");
+        if (engineShortcutHelpRect_.contains(x, y)) return executeEngineCommand("help.shortcuts");
+        return false;
+    }
+
+    void AceShellUi::renderEngineCommandSurface(D2DRenderContext& ctx, float topBarHeight)
+    {
+        initializeEngineCommands();
+        const UiRect menuBar = makeUiRect(0.0f, 0.0f, ctx.width, 34.0f);
+        const UiRect toolBar = makeUiRect(0.0f, 34.0f, ctx.width, topBarHeight);
+        D2DWidgetUtils::fillRect(ctx, menuBar, ctx.brushes.panelDeep);
+        D2DWidgetUtils::fillRect(ctx, toolBar, ctx.brushes.panelElevated);
+        D2DWidgetUtils::drawSoftSeparator(ctx, makeUiRect(0.0f, 33.0f, ctx.width, 34.0f));
+
+        D2DTextLayoutFoundation::Draw(ctx, L"ACE", FontRole::BodyStrong, makeUiRect(12.0f, 0.0f, 72.0f, 34.0f),
+            ctx.brushes.accent, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        engineMenuWindowRect_ = makeUiRect(74.0f, 0.0f, 150.0f, 34.0f);
+        engineMenuViewRect_ = makeUiRect(150.0f, 0.0f, 208.0f, 34.0f);
+        engineMenuHelpRect_ = makeUiRect(208.0f, 0.0f, 264.0f, 34.0f);
+        auto drawMenuTitle = [&](UiRect rect, const wchar_t* label, const char* id)
+        {
+            if (engineOpenMenu_ == id || rect.contains(mouseX_, mouseY_))
+                D2DWidgetUtils::fillRounded(ctx, rect.inset({2.0f, 2.0f, 2.0f, 2.0f}), 5.0f, ctx.brushes.panelSoft);
+            D2DTextLayoutFoundation::Draw(ctx, label, FontRole::Small, rect, ctx.brushes.text,
+                D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        };
+        drawMenuTitle(engineMenuWindowRect_, L"Window", "Window");
+        drawMenuTitle(engineMenuViewRect_, L"View", "View");
+        drawMenuTitle(engineMenuHelpRect_, L"Help", "Help");
+        D2DTextLayoutFoundation::Draw(ctx, L"ACE ENGINE EDITOR", FontRole::Small,
+            makeUiRect(280.0f, 0.0f, ctx.width - 14.0f, 34.0f), ctx.brushes.muted,
+            D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+        const float buttonTop = 42.0f;
+        const float buttonBottom = topBarHeight - 8.0f;
+        engineBackToAiRect_ = makeUiRect(12.0f, buttonTop, 116.0f, buttonBottom);
+        engineCameraResetRect_ = makeUiRect(124.0f, buttonTop, 238.0f, buttonBottom);
+        engineConsoleToggleRect_ = makeUiRect(246.0f, buttonTop, 348.0f, buttonBottom);
+        engineOutlinerToggleRect_ = makeUiRect(356.0f, buttonTop, 458.0f, buttonBottom);
+        engineDetailsToggleRect_ = makeUiRect(466.0f, buttonTop, 554.0f, buttonBottom);
+        engineShortcutHelpRect_ = makeUiRect(562.0f, buttonTop, 646.0f, buttonBottom);
+        engineResetLayoutRect_ = makeUiRect(0, 0, 0, 0);
+
+        const auto outliner = engineCommandRegistry_.find("window.toggle_outliner");
+        const auto details = engineCommandRegistry_.find("window.toggle_details");
+        const auto console = engineCommandRegistry_.find("view.toggle_console");
+        renderAquariumMiniButton(ctx, engineBackToAiRect_, L"AI Details", false);
+        renderAquariumMiniButton(ctx, engineCameraResetRect_, L"Reset Camera", false);
+        renderAquariumMiniButton(ctx, engineConsoleToggleRect_, L"Console", console && console->checked);
+        renderAquariumMiniButton(ctx, engineOutlinerToggleRect_, L"Outliner", outliner && outliner->checked);
+        renderAquariumMiniButton(ctx, engineDetailsToggleRect_, L"Details", details && details->checked);
+        renderAquariumMiniButton(ctx, engineShortcutHelpRect_, L"Shortcuts", shortcutHelp_.visible());
+
+        engineMenuRows_.clear();
+        engineMenuPopupRect_ = makeUiRect(0, 0, 0, 0);
+        if (engineOpenMenu_.empty()) return;
+
+        std::vector<std::string> commandIds;
+        UiRect anchor{};
+        if (engineOpenMenu_ == "Window")
+        {
+            anchor = engineMenuWindowRect_;
+            commandIds = {"window.toggle_outliner", "window.toggle_details", "window.reset_layout"};
+        }
+        else if (engineOpenMenu_ == "View")
+        {
+            anchor = engineMenuViewRect_;
+            commandIds = {"view.reset_camera", "view.camera_speed", "view.toggle_console"};
+        }
+        else
+        {
+            anchor = engineMenuHelpRect_;
+            commandIds = {"help.shortcuts", "help.about"};
+        }
+
+        constexpr float rowHeight = 34.0f;
+        constexpr float popupWidth = 266.0f;
+        engineMenuPopupRect_ = makeUiRect(anchor.left, 34.0f, anchor.left + popupWidth,
+            42.0f + rowHeight * static_cast<float>(commandIds.size()));
+        D2DWidgetUtils::fillRounded(ctx, engineMenuPopupRect_, 7.0f, ctx.brushes.panelElevated, ctx.brushes.border, 1.0f);
+        float top = 38.0f;
+        for (const auto& commandId : commandIds)
+        {
+            const auto command = engineCommandRegistry_.find(commandId);
+            if (!command) continue;
+            const UiRect row = makeUiRect(anchor.left + 4.0f, top, anchor.left + popupWidth - 4.0f, top + rowHeight);
+            engineMenuRows_.push_back({commandId, row});
+            if (row.contains(mouseX_, mouseY_)) D2DWidgetUtils::fillRounded(ctx, row, 5.0f, ctx.brushes.panelSoft);
+            const std::wstring marker = command->type == am::editor::commands::CommandType::Toggle ?
+                (command->checked ? L"\x2713" : L" ") : L"";
+            D2DTextLayoutFoundation::Draw(ctx, marker, FontRole::Small, makeUiRect(row.left + 8.0f, row.top, row.left + 30.0f, row.bottom),
+                ctx.brushes.accent, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            D2DTextLayoutFoundation::Draw(ctx, command->label, FontRole::Small, makeUiRect(row.left + 34.0f, row.top, row.right - 76.0f, row.bottom),
+                command->enabled ? ctx.brushes.text : ctx.brushes.muted, D2DTextOverflowMode::Ellipsis,
+                DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            const std::wstring shortcut = command->chord ? chordText(*command->chord) : L"";
+            D2DTextLayoutFoundation::Draw(ctx, shortcut, FontRole::Small, makeUiRect(row.right - 74.0f, row.top, row.right - 8.0f, row.bottom),
+                ctx.brushes.muted, D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            top += rowHeight;
+        }
+    }
+
     bool AceShellUi::handleEngineEditorClick(float x, float y)
     {
-        if (engineBackToAiRect_.contains(x, y))
-        {
-            leaveEngineEditorMode();
-            return true;
-        }
+        if (handleEngineCommandSurfaceClick(x, y)) return true;
         std::string error;
-        if (engineOutlinerToggleRect_.contains(x, y))
-        {
-            const auto* tab = engineWorkspaceController_.layout().findTab("tab.outliner");
-            if (tab) engineWorkspaceController_.setTabVisible(tab->id, !tab->visible, &error);
-            commitEngineWorkspaceLayout();
-            return true;
-        }
-        if (engineDetailsToggleRect_.contains(x, y))
-        {
-            const auto* tab = engineWorkspaceController_.layout().findTab("tab.details");
-            if (tab) engineWorkspaceController_.setTabVisible(tab->id, !tab->visible, &error);
-            commitEngineWorkspaceLayout();
-            return true;
-        }
-        if (engineResetLayoutRect_.contains(x, y))
-        {
-            engineWorkspaceController_.resetLayout(&error);
-            commitEngineWorkspaceLayout();
-            return true;
-        }
         if (engineWorkspaceController_.pointerDown(x, y, &error))
         {
             if (engineWorkspaceController_.draggingSplitter())
@@ -5284,7 +5576,7 @@ namespace am::ui
     void AceShellUi::renderEngineEditorMode(D2DRenderContext& ctx)
     {
         const auto snapshot = aquariumController_.BuildSnapshot();
-        const float topBarHeight = 70.0f;
+        const float topBarHeight = 92.0f;
         const am::editor::WorkspaceRect workspaceBounds{0.0, topBarHeight, ctx.width, ctx.height};
         std::string layoutError;
         if (!engineWorkspaceController_.arrange(workspaceBounds, {}, &layoutError))
@@ -5308,23 +5600,8 @@ namespace am::ui
         aquariumLogsToggleRect_ = makeUiRect(0, 0, 0, 0);
         aquariumLeftPanelRect_ = makeUiRect(0, 0, 0, 0);
         aquariumRightLogsPanelRect_ = makeUiRect(0, 0, 0, 0);
-        engineBackToAiRect_ = makeUiRect(12.0f, 14.0f, 118.0f, 54.0f);
-        engineResetLayoutRect_ = makeUiRect(ctx.width - 130.0f, 14.0f, ctx.width - 12.0f, 54.0f);
-        engineDetailsToggleRect_ = makeUiRect(engineResetLayoutRect_.left - 100.0f, 14.0f, engineResetLayoutRect_.left - 8.0f, 54.0f);
-        engineOutlinerToggleRect_ = makeUiRect(engineDetailsToggleRect_.left - 112.0f, 14.0f, engineDetailsToggleRect_.left - 8.0f, 54.0f);
 
         D2DWidgetUtils::fillRect(ctx, environmentModalRect_, ctx.brushes.panelDeep);
-        D2DWidgetUtils::fillRect(ctx, makeUiRect(0.0f, 0.0f, ctx.width, topBarHeight), ctx.brushes.panelElevated);
-        D2DWidgetUtils::drawSoftSeparator(ctx, makeUiRect(0.0f, topBarHeight - 1.0f, ctx.width, topBarHeight));
-        renderAquariumMiniButton(ctx, engineBackToAiRect_, L"AI Details", false);
-        const auto* outlinerTab = engineWorkspaceController_.layout().findTab("tab.outliner");
-        const auto* detailsTab = engineWorkspaceController_.layout().findTab("tab.details");
-        renderAquariumMiniButton(ctx, engineOutlinerToggleRect_, L"Outliner", outlinerTab && outlinerTab->visible);
-        renderAquariumMiniButton(ctx, engineDetailsToggleRect_, L"Details", detailsTab && detailsTab->visible);
-        renderAquariumMiniButton(ctx, engineResetLayoutRect_, L"Reset Layout", false);
-        D2DTextLayoutFoundation::Draw(ctx, L"ACE ENGINE EDITOR", FontRole::BodyStrong,
-            makeUiRect(136.0f, 13.0f, engineOutlinerToggleRect_.left - 16.0f, 55.0f), ctx.brushes.text,
-            D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
         for (const auto& nodeGeometry : geometry->nodes())
         {
@@ -5407,6 +5684,11 @@ namespace am::ui
             L"Camera Z    " + std::to_wstring(cameraPosition.z),
             L"Move speed  " + std::to_wstring(aquariumSingleHwndCamera_.MoveSpeed())
         });
+
+        // Menus are a real overlay layer and therefore paint after the viewport
+        // and dock panels. This mirrors Slate's menu stack instead of letting the
+        // DX12 viewport erase a popup drawn earlier in the frame.
+        renderEngineCommandSurface(ctx, topBarHeight);
     }
 
     void AceShellUi::renderAquariumFullScreen3DMode(D2DRenderContext& ctx)
@@ -7332,8 +7614,10 @@ namespace am::ui
 
         return engineLogOverlayVisible_ ||
             cameraSpeedPopupOpen_ ||
+            !engineOpenMenu_.empty() ||
             commandPalette_.active() ||
             settingsOpen_ ||
+            shortcutHelp_.visible() ||
             diagnostics_.visible() ||
             uiDebugOverlay_.Visible();
     }
@@ -9860,6 +10144,12 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
         const float x = static_cast<float>(p.x);
         const float y = static_cast<float>(p.y);
 
+        if (shortcutHelp_.visible())
+        {
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+            return;
+        }
+
         if (cameraSpeedPopupOpen_ && cameraSpeedInputRect_.contains(x, y))
         {
             SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
@@ -9884,8 +10174,13 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
                 SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
                 return;
             }
-            if (engineBackToAiRect_.contains(x, y) || engineOutlinerToggleRect_.contains(x, y) ||
-                engineDetailsToggleRect_.contains(x, y) || engineResetLayoutRect_.contains(x, y))
+            bool overMenuRow = false;
+            for (const auto& row : engineMenuRows_) overMenuRow = overMenuRow || row.second.contains(x, y);
+            if (engineMenuWindowRect_.contains(x, y) || engineMenuViewRect_.contains(x, y) ||
+                engineMenuHelpRect_.contains(x, y) || engineBackToAiRect_.contains(x, y) ||
+                engineCameraResetRect_.contains(x, y) || engineConsoleToggleRect_.contains(x, y) ||
+                engineOutlinerToggleRect_.contains(x, y) || engineDetailsToggleRect_.contains(x, y) ||
+                engineShortcutHelpRect_.contains(x, y) || overMenuRow)
                 SetCursor(LoadCursorW(nullptr, IDC_HAND));
             else
                 SetCursor(LoadCursorW(nullptr, IDC_ARROW));

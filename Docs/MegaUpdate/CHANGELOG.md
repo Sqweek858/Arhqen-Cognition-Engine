@@ -123,3 +123,14 @@
 - Kept D2D popup layers above DX12 by integrating them with the existing parent-composition overlay policy and retained dirty layer.
 - Scaled camera acceleration above the tuned default so high requested speed values affect actual travel rather than only the UI.
 - Added 32 warning-as-error checks plus Debug, Release, CMake and hidden-startup gates.
+
+## 2026-07-03 - M2.5 functional editor command surface
+
+- Added a contextual editor command registry as the single backend for visible menu, toolbar and shortcut actions.
+- Added functional `Window`, `View` and `Help` menus while deliberately withholding scene, asset, shader and tool menus with no backend yet.
+- Added live checked state for Outliner, Details and Console plus real actions for layout reset, camera reset/speed, help and AI-mode return.
+- Added a compact toolbar that executes the same registered commands rather than maintaining a second action path.
+- Added Ctrl+Shift+O, Ctrl+Shift+D, Ctrl+0 and F1 routing with repeat suppression and input-focus barriers.
+- Painted menu popups after viewport/panels and integrated their lifetime with parent composition, Escape, outside-click and focus-loss behavior.
+- Corrected Shortcut Help priority so its pointer and Escape input cannot leak into Engine Mode underneath.
+- Expanded the shell gate to 20 focused command/menu/overlay assertions and passed all build/startup configurations.
