@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M2 - main Engine editor shell
-- Mini-milestone: M2.3a - workspace pointer interaction and commit boundaries (complete; ready to commit)
-- Latest known-good commit: `8a27a63` (`M2.2: solve editor workspace geometry`)
+- Mini-milestone: M2.3b - visible Engine-mode shell integration (complete; ready to commit)
+- Latest known-good commit: `3190f73` (`M2.3a: add workspace interaction controller`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -36,10 +36,15 @@
 - Splitter movement remains in memory until mouse-up requests exactly one persistence commit; no-op clicks do not write.
 - Cancel/Escape and window rearrangement restore the exact pre-drag layout and prior dirty/commit state.
 - Tab activation, panel visibility and layout reset now share the same deterministic dirty/commit contract.
+- Added the functional `Engine` / `AI Details` mode switch inside the existing top-level window.
+- Integrated the editor workspace with the stable single-HWND DX12 + D2D composition path without recreating the renderer.
+- Added real viewport, Outliner and Details panels, functional show/hide/reset controls, split dragging and independent atomic layout persistence.
+- Kept Content Browser, menus and tools unexposed until their backends exist.
+- Removed Aquarium telemetry and AI scenario/planner identity from Engine Mode; panels now show generic scene, renderer and camera data.
 
 ## Next action
 
-Commit and push M2.3a, then wire the first visible Engine-mode shell slice into the existing single-HWND D2D composition path.
+Commit and push M2.3b, then implement the shared premium camera-speed model, viewport popup and navigation integration.
 
 ## Existing baseline findings
 
@@ -75,3 +80,6 @@ Commit and push M2.3a, then wire the first visible Engine-mode shell slice into 
 - M2.2 layout-model regression, MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_editor_workspace_controller.ps1`: PASS (31 capture, drag, cancel, cursor, tab and commit-boundary checks, `/W4 /WX`).
 - M2.3a MSBuild Debug/Release and CMake Debug: PASS.
+- `validate_ace_engine_mode_shell.ps1`: PASS (12 route, composition, persistence, input and exposure checks, `/W4 /WX`).
+- M2.3b workspace/text/panel regressions, hidden Debug executable smoke start, MSBuild Debug/Release and CMake Debug: PASS.
+- User visual smoke test confirmed the visible editor layout and splitter resize behavior; requested telemetry/scenario cleanup is included in this checkpoint.

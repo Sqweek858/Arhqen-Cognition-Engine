@@ -102,3 +102,13 @@
 - Cancel and window rearrangement restore the exact pre-drag layout plus previous dirty/commit state.
 - Tab activation, panel visibility and reset now use the same controller-owned mutation boundary.
 - Added warning-as-error tests for pointer lifecycle, invalid input, cursor behavior and one-shot commits.
+
+## 2026-07-03 - M2.3b visible Engine-mode shell
+
+- Added the `Engine` entry point and `AI Details` return path in the same native window.
+- Rendered the persisted editor workspace around the real DX12 viewport through the existing D2D composition path.
+- Added functional Outliner/Details visibility controls, Reset Layout and pointer-captured splitters.
+- Added independent atomic editor-layout load/save with canonical-topology recovery.
+- Kept Content Browser and unavailable editor commands hidden rather than presenting inert UE-shaped controls.
+- Removed Aquarium telemetry and AI scenario/planner labels from Engine Mode after visual smoke feedback.
+- Added strict shell-integration checks and a real hidden Debug executable startup smoke test.

@@ -935,6 +935,13 @@ namespace am::ui
         }
 
         case WM_CAPTURECHANGED:
+            if (engineWorkspaceController_.draggingSplitter())
+            {
+                std::string ignored;
+                engineWorkspaceController_.cancelPointerInteraction(&ignored);
+                mouseCaptured_ = false;
+                invalidate();
+            }
             if (aquariumSingleHwndMouseCaptured_)
             {
                 cancelAquariumSingleHwndMouseLook("capture_lost");
@@ -955,6 +962,13 @@ namespace am::ui
 
         case WM_CANCELMODE:
         case WM_KILLFOCUS:
+            if (engineWorkspaceController_.draggingSplitter())
+            {
+                std::string ignored;
+                engineWorkspaceController_.cancelPointerInteraction(&ignored);
+                mouseCaptured_ = false;
+                invalidate();
+            }
             if (aquariumSingleHwndMouseLookActive_ || aquariumSingleHwndMouseCaptured_)
             {
                 cancelAquariumSingleHwndMouseLook(message == WM_KILLFOCUS ? "kill_focus" : "cancel_mode");
@@ -1015,6 +1029,13 @@ namespace am::ui
 
             if (environmentOpen_)
             {
+                if (engineEditorModeActive_)
+                {
+                    handleEngineEditorClick(x, y);
+                    invalidate();
+                    if (handled) { *handled = true; }
+                    return 0;
+                }
                 if (environmentModalCloseRect_.contains(x, y))
                 {
                     if (aquarium3DModeActive_)
@@ -1198,6 +1219,21 @@ namespace am::ui
             const float x = static_cast<float>(GET_X_LPARAM(lParam));
             const float y = static_cast<float>(GET_Y_LPARAM(lParam));
 
+            if (engineEditorModeActive_ && engineWorkspaceController_.draggingSplitter())
+            {
+                std::string error;
+                engineWorkspaceController_.pointerUp(x, y, &error);
+                if (mouseCaptured_)
+                {
+                    mouseCaptured_ = false;
+                    ReleaseCapture();
+                }
+                commitEngineWorkspaceLayout();
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
             if (engineLogOverlayVisible_)
             {
                 auto ctx = makeContext();
@@ -1310,6 +1346,15 @@ namespace am::ui
                 {
                     updateAquariumSingleHwndMouseLook(x, y, "wm_mousemove_fallback");
                 }
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (engineEditorModeActive_ && engineWorkspaceController_.draggingSplitter())
+            {
+                std::string error;
+                engineWorkspaceController_.pointerMove(x, y, &error);
+                invalidate();
                 if (handled) { *handled = true; }
                 return 0;
             }
@@ -1460,6 +1505,12 @@ namespace am::ui
                 return 0;
             }
 
+            if (engineEditorModeActive_ && !commandPalette_.active())
+            {
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
             if (commandPalette_.active())
             {
                 if (commandPalette_.onChar(wParam))
@@ -1482,6 +1533,27 @@ namespace am::ui
         case WM_KEYDOWN:
         {
             const auto keyboard = D2DKeyboardState::current();
+
+            if (engineEditorModeActive_ && wParam == VK_ESCAPE && engineWorkspaceController_.draggingSplitter())
+            {
+                std::string error;
+                engineWorkspaceController_.cancelPointerInteraction(&error);
+                if (mouseCaptured_)
+                {
+                    mouseCaptured_ = false;
+                    ReleaseCapture();
+                }
+                invalidate();
+                if (handled) { *handled = true; }
+                return 0;
+            }
+
+            if (engineEditorModeActive_ && wParam == VK_ESCAPE && keyboard.noModifiers())
+            {
+                leaveEngineEditorMode();
+                if (handled) { *handled = true; }
+                return 0;
+            }
 
             if (environmentOpen_ && aquarium3DModeActive_ && keyboard.noModifiers() &&
                 !(engineLogOverlayVisible_ && engineLogOverlayInputFocused_) &&
@@ -2938,7 +3010,10 @@ namespace am::ui
         const UiRect clipRect = currentAquariumViewportDynamicLayerRect();
         ctx.target->PushAxisAlignedClip(clipRect.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         renderAquariumDx12ViewportSurface(ctx, viewportSurface, snapshot.debugTruthEnabled);
-        renderAquariumViewportHudLayer(ctx, viewportSurface, snapshot);
+        if (!engineEditorModeActive_)
+        {
+            renderAquariumViewportHudLayer(ctx, viewportSurface, snapshot);
+        }
         renderEngineLogOverlay(ctx);
         ctx.target->PopAxisAlignedClip();
         return true;
@@ -3264,6 +3339,7 @@ namespace am::ui
         const UiRect rects[] = {
             aquariumDetailsToggleRect_,
             aquariumLogsToggleRect_,
+            aquariumEngineModeRect_,
             aquariumDebugRect_,
             environmentModalCloseRect_,
             aquariumScenarioPrevRect_,
@@ -3312,6 +3388,7 @@ namespace am::ui
         const UiRect rects[] = {
             aquariumDetailsToggleRect_,
             aquariumLogsToggleRect_,
+            aquariumEngineModeRect_,
             aquariumDebugRect_,
             environmentModalCloseRect_,
             aquariumScenarioPrevRect_,
@@ -4688,6 +4765,12 @@ namespace am::ui
             return false;
         }
 
+        if (aquariumEngineModeRect_.contains(x, y))
+        {
+            enterEngineEditorMode();
+            return true;
+        }
+
         if (aquariumDetailsToggleRect_.contains(x, y))
         {
             aquariumDetailsPanelVisible_ = !aquariumDetailsPanelVisible_;
@@ -4884,7 +4967,11 @@ namespace am::ui
             aquariumControllerReady_ = aquariumController_.Initialize();
         }
 
-        if (aquarium3DModeActive_)
+        if (engineEditorModeActive_)
+        {
+            renderEngineEditorMode(ctx);
+        }
+        else if (aquarium3DModeActive_)
         {
             renderAquariumFullScreen3DMode(ctx);
         }
@@ -4910,6 +4997,7 @@ namespace am::ui
 
         aquariumDetailsToggleRect_ = makeUiRect(0, 0, 0, 0);
         aquariumLogsToggleRect_ = makeUiRect(0, 0, 0, 0);
+        aquariumEngineModeRect_ = makeUiRect(0, 0, 0, 0);
         aquariumLeftPanelRect_ = makeUiRect(0, 0, 0, 0);
         aquariumRightLogsPanelRect_ = makeUiRect(0, 0, 0, 0);
         aquariumLeftResizeHandleRect_ = makeUiRect(0, 0, 0, 0);
@@ -5007,6 +5095,234 @@ namespace am::ui
         renderAquariumScrollableLines(ctx, L"Logs / Episodes", snapshot.logLines, logs, aquariumLogScroll_, 64);
     }
 
+    std::filesystem::path AceShellUi::engineWorkspaceLayoutPath() const
+    {
+        if (layoutProfilePath_.empty()) return {};
+        return layoutProfilePath_.parent_path() / L"ace-engine-workspace.acebin";
+    }
+
+    void AceShellUi::enterEngineEditorMode()
+    {
+        if (!engineWorkspaceLoaded_)
+        {
+            const auto path = engineWorkspaceLayoutPath();
+            if (!path.empty() && std::filesystem::exists(path))
+            {
+                std::string error;
+                if (auto loaded = am::editor::EditorWorkspaceLayout::load(path, &error))
+                {
+                    const bool canonical = loaded->findNode("stack.viewport") && loaded->findNode("stack.outliner") &&
+                        loaded->findNode("stack.details") && loaded->findNode("stack.content") &&
+                        loaded->findTab("tab.viewport") && loaded->findTab("tab.outliner") &&
+                        loaded->findTab("tab.details") && loaded->findTab("tab.content");
+                    if (canonical) engineWorkspaceController_ = am::editor::EditorWorkspaceController(std::move(*loaded));
+                    else showToast(L"Editor layout", L"Saved layout topology was incomplete; defaults restored.", D2DToastKind::Warning);
+                }
+                else
+                    showToast(L"Editor layout", L"Saved layout was rejected; defaults restored.", D2DToastKind::Warning);
+            }
+            engineWorkspaceLoaded_ = true;
+        }
+        engineEditorModeActive_ = true;
+        aquarium3DModeActive_ = true;
+        aquariumUseSingleHwndCompositeViewport_ = true;
+        aquariumEmbeddedViewportVisible_ = true;
+        aquariumEmbeddedDx12Viewport_.Hide();
+        engineLogOverlayVisible_ = false;
+        invalidate();
+    }
+
+    void AceShellUi::leaveEngineEditorMode()
+    {
+        std::string ignored;
+        if (engineWorkspaceController_.draggingSplitter())
+            engineWorkspaceController_.cancelPointerInteraction(&ignored);
+        engineEditorModeActive_ = false;
+        aquarium3DModeActive_ = true;
+        aquariumEmbeddedViewportVisible_ = true;
+        invalidate();
+    }
+
+    void AceShellUi::commitEngineWorkspaceLayout()
+    {
+        const auto path = engineWorkspaceLayoutPath();
+        if (path.empty()) return;
+        if (!engineWorkspaceController_.takeCommitRequested()) return;
+        std::string error;
+        if (engineWorkspaceController_.layout().save(path, &error))
+            engineWorkspaceController_.markSaved();
+        else
+            showToast(L"Editor layout save failed", widen(error), D2DToastKind::Error);
+    }
+
+    bool AceShellUi::handleEngineEditorClick(float x, float y)
+    {
+        if (engineBackToAiRect_.contains(x, y))
+        {
+            leaveEngineEditorMode();
+            return true;
+        }
+        std::string error;
+        if (engineOutlinerToggleRect_.contains(x, y))
+        {
+            const auto* tab = engineWorkspaceController_.layout().findTab("tab.outliner");
+            if (tab) engineWorkspaceController_.setTabVisible(tab->id, !tab->visible, &error);
+            commitEngineWorkspaceLayout();
+            return true;
+        }
+        if (engineDetailsToggleRect_.contains(x, y))
+        {
+            const auto* tab = engineWorkspaceController_.layout().findTab("tab.details");
+            if (tab) engineWorkspaceController_.setTabVisible(tab->id, !tab->visible, &error);
+            commitEngineWorkspaceLayout();
+            return true;
+        }
+        if (engineResetLayoutRect_.contains(x, y))
+        {
+            engineWorkspaceController_.resetLayout(&error);
+            commitEngineWorkspaceLayout();
+            return true;
+        }
+        if (engineWorkspaceController_.pointerDown(x, y, &error))
+        {
+            if (engineWorkspaceController_.draggingSplitter())
+            {
+                mouseCaptured_ = true;
+                SetCapture(parent_);
+            }
+            commitEngineWorkspaceLayout();
+            return true;
+        }
+        return false;
+    }
+
+    void AceShellUi::renderEngineEditorMode(D2DRenderContext& ctx)
+    {
+        const auto snapshot = aquariumController_.BuildSnapshot();
+        const float topBarHeight = 70.0f;
+        const am::editor::WorkspaceRect workspaceBounds{0.0, topBarHeight, ctx.width, ctx.height};
+        std::string layoutError;
+        if (!engineWorkspaceController_.arrange(workspaceBounds, {}, &layoutError))
+        {
+            engineWorkspaceController_.resetLayout(&layoutError);
+            engineWorkspaceController_.arrange(workspaceBounds, {}, &layoutError);
+        }
+        const auto* geometry = engineWorkspaceController_.geometry();
+        if (!geometry) return;
+
+        auto toUiRect = [](const am::editor::WorkspaceRect& rect)
+        {
+            return makeUiRect(static_cast<float>(rect.left), static_cast<float>(rect.top),
+                static_cast<float>(rect.right), static_cast<float>(rect.bottom));
+        };
+
+        environmentModalRect_ = makeUiRect(0.0f, 0.0f, ctx.width, ctx.height);
+        environmentModalCloseRect_ = makeUiRect(0, 0, 0, 0);
+        aquariumEngineModeRect_ = makeUiRect(0, 0, 0, 0);
+        aquariumDetailsToggleRect_ = makeUiRect(0, 0, 0, 0);
+        aquariumLogsToggleRect_ = makeUiRect(0, 0, 0, 0);
+        aquariumLeftPanelRect_ = makeUiRect(0, 0, 0, 0);
+        aquariumRightLogsPanelRect_ = makeUiRect(0, 0, 0, 0);
+        engineBackToAiRect_ = makeUiRect(12.0f, 14.0f, 118.0f, 54.0f);
+        engineResetLayoutRect_ = makeUiRect(ctx.width - 130.0f, 14.0f, ctx.width - 12.0f, 54.0f);
+        engineDetailsToggleRect_ = makeUiRect(engineResetLayoutRect_.left - 100.0f, 14.0f, engineResetLayoutRect_.left - 8.0f, 54.0f);
+        engineOutlinerToggleRect_ = makeUiRect(engineDetailsToggleRect_.left - 112.0f, 14.0f, engineDetailsToggleRect_.left - 8.0f, 54.0f);
+
+        D2DWidgetUtils::fillRect(ctx, environmentModalRect_, ctx.brushes.panelDeep);
+        D2DWidgetUtils::fillRect(ctx, makeUiRect(0.0f, 0.0f, ctx.width, topBarHeight), ctx.brushes.panelElevated);
+        D2DWidgetUtils::drawSoftSeparator(ctx, makeUiRect(0.0f, topBarHeight - 1.0f, ctx.width, topBarHeight));
+        renderAquariumMiniButton(ctx, engineBackToAiRect_, L"AI Details", false);
+        const auto* outlinerTab = engineWorkspaceController_.layout().findTab("tab.outliner");
+        const auto* detailsTab = engineWorkspaceController_.layout().findTab("tab.details");
+        renderAquariumMiniButton(ctx, engineOutlinerToggleRect_, L"Outliner", outlinerTab && outlinerTab->visible);
+        renderAquariumMiniButton(ctx, engineDetailsToggleRect_, L"Details", detailsTab && detailsTab->visible);
+        renderAquariumMiniButton(ctx, engineResetLayoutRect_, L"Reset Layout", false);
+        D2DTextLayoutFoundation::Draw(ctx, L"ACE ENGINE EDITOR", FontRole::BodyStrong,
+            makeUiRect(136.0f, 13.0f, engineOutlinerToggleRect_.left - 16.0f, 55.0f), ctx.brushes.text,
+            D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+        for (const auto& nodeGeometry : geometry->nodes())
+        {
+            if (nodeGeometry.kind != am::editor::DockNodeKind::Stack) continue;
+            const UiRect bounds = toUiRect(nodeGeometry.bounds);
+            const UiRect tabBar = toUiRect(nodeGeometry.tabBar);
+            D2DWidgetUtils::fillRect(ctx, bounds, nodeGeometry.nodeId == "stack.viewport" ? ctx.brushes.panelDeep : ctx.brushes.panel);
+            D2DWidgetUtils::fillRect(ctx, tabBar, ctx.brushes.panelElevated);
+            if (ctx.target && ctx.brushes.borderDim) ctx.target->DrawRectangle(bounds.d2d(), ctx.brushes.borderDim, 1.0f);
+        }
+
+        for (const auto& tabGeometry : geometry->tabs())
+        {
+            const UiRect tabRect = toUiRect(tabGeometry.bounds);
+            if (tabGeometry.active) D2DWidgetUtils::fillRect(ctx, tabRect, ctx.brushes.panelSoft);
+            const auto* tab = engineWorkspaceController_.layout().findTab(tabGeometry.tabId);
+            if (tab)
+                D2DTextLayoutFoundation::Draw(ctx, widen(tab->label), FontRole::Small, tabRect.inset({10.0f, 0.0f, 8.0f, 0.0f}),
+                    tabGeometry.active ? ctx.brushes.text : ctx.brushes.muted, D2DTextOverflowMode::Ellipsis,
+                    DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+
+        for (const auto& splitter : geometry->splitters())
+            D2DWidgetUtils::fillRect(ctx, toUiRect(splitter.visualBounds), ctx.brushes.border);
+
+        const auto* viewportNode = geometry->findNode("stack.viewport");
+        aquariumEmbeddedViewportRect_ = viewportNode ? toUiRect(viewportNode->content) : makeUiRect(0, 0, 0, 0);
+        aquariumLastViewportRect_ = aquariumEmbeddedViewportRect_;
+        aquariumEmbeddedViewportVisible_ = !aquariumEmbeddedViewportRect_.empty();
+        aquariumUseSingleHwndCompositeViewport_ = true;
+        aquariumTelemetryOverlayRect_ = makeUiRect(0, 0, 0, 0);
+        if (aquariumEmbeddedViewportVisible_)
+        {
+            renderAquariumDx12ViewportSurface(ctx, aquariumEmbeddedViewportRect_, snapshot.debugTruthEnabled);
+        }
+
+        const auto primitives = aquariumSceneAdapter_.BuildPrimitives(aquariumController_, false);
+        std::array<std::size_t, 7> primitiveCounts{};
+        for (const auto& primitive : primitives)
+        {
+            const auto index = static_cast<std::size_t>(primitive.Kind);
+            if (index < primitiveCounts.size()) ++primitiveCounts[index];
+        }
+
+        auto renderRows = [&](const char* nodeId, const std::vector<std::wstring>& rows)
+        {
+            const auto* node = geometry->findNode(nodeId);
+            if (!node || node->content.empty()) return;
+            const UiRect content = toUiRect(node->content).inset({12.0f, 10.0f, 12.0f, 8.0f});
+            if (ctx.target) ctx.target->PushAxisAlignedClip(content.d2d(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            float top = content.top;
+            for (const auto& row : rows)
+            {
+                if (top + 24.0f > content.bottom) break;
+                D2DTextLayoutFoundation::Draw(ctx, row, FontRole::Small,
+                    makeUiRect(content.left, top, content.right, top + 22.0f), ctx.brushes.textDim,
+                    D2DTextOverflowMode::Ellipsis, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+                top += 24.0f;
+            }
+            if (ctx.target) ctx.target->PopAxisAlignedClip();
+        };
+
+        renderRows("stack.outliner", {
+            L"Scene",
+            L"  Editor Camera",
+            L"  Dynamic Meshes (1)",
+            L"  Blocks (" + std::to_wstring(primitiveCounts[static_cast<std::size_t>(ace::aquarium_render::AceAqRenderPrimitiveKind::Block)]) + L")",
+            L"  Tiles (" + std::to_wstring(primitiveCounts[static_cast<std::size_t>(ace::aquarium_render::AceAqRenderPrimitiveKind::Tile)]) + L")",
+            L"  Grid lines (" + std::to_wstring(primitiveCounts[static_cast<std::size_t>(ace::aquarium_render::AceAqRenderPrimitiveKind::GridLine)]) + L")"
+        });
+        const auto cameraPosition = aquariumSingleHwndCamera_.Position();
+        renderRows("stack.details", {
+            L"Renderer    DX12 + D2D composite",
+            L"Viewport    " + std::to_wstring(static_cast<int>(aquariumEmbeddedViewportRect_.width())) + L" x " +
+                std::to_wstring(static_cast<int>(aquariumEmbeddedViewportRect_.height())),
+            L"Primitives  " + std::to_wstring(primitives.size()),
+            L"Camera X    " + std::to_wstring(cameraPosition.x),
+            L"Camera Y    " + std::to_wstring(cameraPosition.y),
+            L"Camera Z    " + std::to_wstring(cameraPosition.z),
+            L"Move speed  " + std::to_wstring(aquariumSingleHwndCamera_.MoveSpeed())
+        });
+    }
+
     void AceShellUi::renderAquariumFullScreen3DMode(D2DRenderContext& ctx)
     {
         const auto snapshot = aquariumController_.BuildSnapshot();
@@ -5032,6 +5348,7 @@ namespace am::ui
         aquariumDetailsToggleRect_ = toUiRect(layout.detailsToggle);
         aquariumLogsToggleRect_ = toUiRect(layout.logsToggle);
         aquariumDebugRect_ = toUiRect(layout.topbarDebugTruth);
+        aquariumEngineModeRect_ = makeUiRect(topbar.left + 164.0f, topbar.top + 8.0f, topbar.left + 258.0f, topbar.bottom - 8.0f);
         aquariumLeftPanelRect_ = toUiRect(layout.leftPanel);
         aquariumRightLogsPanelRect_ = toUiRect(layout.rightLogsPanel);
         aquariumLeftResizeHandleRect_ = toUiRect(layout.leftResizeHandle);
@@ -5077,10 +5394,12 @@ namespace am::ui
         // ACE-AQ3D6: TopbarLayout left/center/right clusters exist and do not overlap.
         renderAquariumMiniButton(ctx, aquariumDetailsToggleRect_, aquariumDetailsPanelVisible_ ? L"Hide Details" : L"Details", aquariumDetailsPanelVisible_);
         renderAquariumMiniButton(ctx, aquariumLogsToggleRect_, aquariumLogsPanelVisible_ ? L"Hide Logs" : L"Logs", aquariumLogsPanelVisible_);
+        renderAquariumMiniButton(ctx, aquariumEngineModeRect_, L"Engine", false);
         renderAquariumMiniButton(ctx, aquariumDebugRect_, snapshot.debugTruthEnabled ? L"Truth ON" : L"Truth", snapshot.debugTruthEnabled);
         renderAquariumMiniButton(ctx, environmentModalCloseRect_, L"X", false);
 
-        const UiRect statusRect = toUiRect(layout.topbarStatusClip);
+        UiRect statusRect = toUiRect(layout.topbarStatusClip);
+        statusRect.left = std::min(statusRect.right, std::max(statusRect.left, aquariumEngineModeRect_.right + 14.0f));
         if (!statusRect.empty())
         {
             if (ctx.target)
@@ -8607,6 +8926,14 @@ namespace am::ui
             return;
         }
 
+        if (engineWorkspaceController_.draggingSplitter())
+        {
+            std::string ignored;
+            engineWorkspaceController_.cancelPointerInteraction(&ignored);
+            if (mouseCaptured_ && parent_ && GetCapture() == parent_) ReleaseCapture();
+            mouseCaptured_ = false;
+        }
+
         refreshDisplayMetrics("resize");
 
         if (windowLiveResizeActive_)
@@ -8647,7 +8974,23 @@ namespace am::ui
         gradientsDirty_ = true;
         layout(width, height);
 
-        if (environmentOpen_ && aquarium3DModeActive_)
+        if (environmentOpen_ && aquarium3DModeActive_ && engineEditorModeActive_)
+        {
+            std::string ignored;
+            engineWorkspaceController_.arrange({0.0, 70.0, static_cast<double>(width), static_cast<double>(height)}, {}, &ignored);
+            if (const auto* geometry = engineWorkspaceController_.geometry())
+            {
+                if (const auto* viewport = geometry->findNode("stack.viewport"))
+                    aquariumEmbeddedViewportRect_ = makeUiRect(
+                        static_cast<float>(viewport->content.left), static_cast<float>(viewport->content.top),
+                        static_cast<float>(viewport->content.right), static_cast<float>(viewport->content.bottom));
+            }
+            aquariumNativeViewportRect_ = computeAquariumNativeViewportRect(aquariumEmbeddedViewportRect_);
+            aquariumPendingViewportRect_ = aquariumNativeViewportRect_;
+            aquariumPendingViewportValid_ = true;
+            hideAquariumResizeShieldWindow();
+        }
+        else if (environmentOpen_ && aquarium3DModeActive_)
         {
             aquarium3DPanelState_.detailsVisible = aquariumDetailsPanelVisible_;
             aquarium3DPanelState_.logsVisible = aquariumLogsPanelVisible_;
@@ -9178,6 +9521,27 @@ const int h = std::max(1, static_cast<int>(bottomRight.y - topLeft.y));
 
         const float x = static_cast<float>(p.x);
         const float y = static_cast<float>(p.y);
+
+        if (engineEditorModeActive_)
+        {
+            const auto cursor = engineWorkspaceController_.cursorAt(x, y);
+            if (cursor == am::editor::WorkspaceCursor::ResizeHorizontal)
+            {
+                SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
+                return;
+            }
+            if (cursor == am::editor::WorkspaceCursor::ResizeVertical)
+            {
+                SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
+                return;
+            }
+            if (engineBackToAiRect_.contains(x, y) || engineOutlinerToggleRect_.contains(x, y) ||
+                engineDetailsToggleRect_.contains(x, y) || engineResetLayoutRect_.contains(x, y))
+                SetCursor(LoadCursorW(nullptr, IDC_HAND));
+            else
+                SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+            return;
+        }
 
         PanelResizeEdge resizeEdges = aquariumPanelResizeTarget_ != AquariumPanelResizeTarget::None
             ? aquariumPanelResizeEdges_

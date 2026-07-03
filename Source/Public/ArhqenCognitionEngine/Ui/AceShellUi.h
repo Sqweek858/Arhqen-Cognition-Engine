@@ -56,6 +56,7 @@
 #include "ArhqenCognitionEngine/Ui/Core/AceUiRetainedLayout.h"
 #include "ArhqenCognitionEngine/Ui/Core/AceUiStyleSet.h"
 #include "ArhqenCognitionEngine/Ui/Core/AcePanelResizePolicy.h"
+#include "ArhqenCognitionEngine/Editor/Workspace/AceEditorWorkspaceController.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DDrawCommandBuffer.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DUiDebugOverlay.h"
 #include "ArhqenCognitionEngine/Ui/D2D/D2DAquariumTelemetryWidgets.h"
@@ -149,6 +150,12 @@ namespace am::ui
         void renderAquariumControlPanel(D2DRenderContext& ctx);
         void renderAquariumControlPanelHome(D2DRenderContext& ctx);
         void renderAquariumFullScreen3DMode(D2DRenderContext& ctx);
+        void renderEngineEditorMode(D2DRenderContext& ctx);
+        void enterEngineEditorMode();
+        void leaveEngineEditorMode();
+        bool handleEngineEditorClick(float x, float y);
+        void commitEngineWorkspaceLayout();
+        std::filesystem::path engineWorkspaceLayoutPath() const;
         void renderAquariumDx12ViewportSurface(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled);
         void renderAquariumResizeProxyViewport(D2DRenderContext& ctx, UiRect rect);
         void renderAquariumSlateCompositeViewport(D2DRenderContext& ctx, UiRect rect, bool debugTruthEnabled);
@@ -334,6 +341,8 @@ namespace am::ui
         bool mouseCaptured_ = false;
         bool settingsOpen_ = false;
         bool environmentOpen_ = false;
+        bool engineEditorModeActive_ = false;
+        bool engineWorkspaceLoaded_ = false;
         std::uint64_t nextMessageId_ = 1;
         std::uint64_t nextConversationNumber_ = 1;
         std::size_t activeConversationIndex_ = 0;
@@ -356,6 +365,7 @@ namespace am::ui
         D2DDrawCommandBuffer uiDrawCommands_{};
         D2DUiDebugOverlay uiDebugOverlay_{};
         D2DAquariumTelemetryWidgets aquariumTelemetryWidgets_{};
+        am::editor::EditorWorkspaceController engineWorkspaceController_{};
         std::uint64_t aceUi5TextClampCount_ = 0;
         std::uint64_t aceUi6RetainedLayoutFrameCount_ = 0;
         std::uint64_t aceUi7DrawCommandFrameCount_ = 0;
@@ -632,6 +642,11 @@ namespace am::ui
         UiRect aquariumLogsFocusRect_{};
         UiRect aquariumDetailsToggleRect_{};
         UiRect aquariumLogsToggleRect_{};
+        UiRect aquariumEngineModeRect_{};
+        UiRect engineBackToAiRect_{};
+        UiRect engineOutlinerToggleRect_{};
+        UiRect engineDetailsToggleRect_{};
+        UiRect engineResetLayoutRect_{};
         UiRect aquariumLeftPanelRect_{};
         UiRect aquariumRightLogsPanelRect_{};
         UiRect aquariumLeftResizeHandleRect_{};

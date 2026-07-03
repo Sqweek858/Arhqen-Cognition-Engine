@@ -75,3 +75,8 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 
 - Slate's splitter interaction keeps capture ownership explicit, updates layout while dragging and treats release/cancel as distinct lifecycle boundaries.
 - ACE adaptation: `EditorWorkspaceController` owns that lifecycle over the pure model/geometry layers. It never writes during pointer movement, emits a one-shot commit request after release, and restores a full pre-drag snapshot on cancellation or window rearrangement.
+
+## M2.3b - visible editor host
+
+- UE keeps the level viewport as one editor content region while Slate owns surrounding tabs, panels and input; switching editor modes does not recreate the rendering device.
+- ACE adaptation: Engine Mode remains inside the existing top-level HWND and reuses the proven single-HWND DX12/D2D viewport composition. Only panels with real data are exposed, and the AI-specific telemetry overlay is deliberately excluded from the editor viewport.
