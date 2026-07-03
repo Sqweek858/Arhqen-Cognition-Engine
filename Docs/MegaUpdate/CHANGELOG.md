@@ -226,3 +226,13 @@
 - Added a nonzero scale floor to prevent accidental singular transforms.
 - Kept visual handles and input hidden pending real hit proxies and screen-to-world math.
 - Added 22 warning-as-error gizmo checks and passed all build configurations.
+
+## 2026-07-03 - M3.7c deterministic scene picking foundation
+
+- Added GUID-keyed scene pick proxies with validated world-space AABBs and visibility/selectability flags.
+- Added robust normalized ray/AABB intersection with nearest-hit selection, maximum distance and inside-volume behavior.
+- Made exact-distance ties deterministic through explicit priority and stable GUID ordering rather than hash-map iteration order.
+- Added eight-corner local-to-world bounds transformation for rotated, non-uniformly and negatively scaled entities.
+- Kept the broad phase behind a compact replaceable API and verified 20,000 proxies remain bounded at the current editor scale.
+- Deliberately withheld viewport selection until screen-ray construction and render-proxy synchronization are authoritative.
+- Added 16 warning-as-error picking checks and passed all build configurations.

@@ -149,3 +149,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 
 - UE's editor widget applies translate/rotate/scale deltas through mode tools while the mouse delta tracker owns accumulated tracking state and snapping policy.
 - ACE adaptation: `TransformGizmo` evaluates every update from immutable drag-start transforms, filters by axis/plane, converts local translation through the entity Euler basis and snaps each domain independently. It delegates state mutation and history to `SceneEditController`; visible handles wait for real picking.
+
+## M3.7c - scene picking foundation
+
+- UE viewport selection separates hit-proxy identity from widget paint and resolves selection only after the viewport has produced an authoritative hit result.
+- `Runtime/Engine/Public/HitProxies.h` defines stable hit-proxy identity and priority concepts; editor viewport clients consume the resolved hit instead of embedding scene mutation in rendering code.
+- ACE adaptation: `ScenePicker` owns GUID-keyed world bounds, normalized ray intersection and deterministic priority/identity tie-breaking independently of D2D paint. The initial broad phase is linear but hidden behind a replaceable API; screen unprojection, render-proxy synchronization and visible gizmo handles follow as separate integration slices.

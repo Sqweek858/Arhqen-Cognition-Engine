@@ -70,6 +70,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Editor/ContentBrowser/AceContentBrowserController.cpp
     Source/Private/Editor/Scene/AceSceneEditController.cpp
     Source/Private/Editor/Scene/AceTransformGizmo.cpp
+    Source/Private/Editor/Scene/AceScenePicking.cpp
     Source/Private/Renderer/Dx12Renderer.cpp
     Source/Private/Renderer/NativeWindow.cpp
     Source/Private/Renderer/UiDrawList.cpp

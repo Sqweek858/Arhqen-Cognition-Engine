@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.7b - transform gizmo math foundation (complete; ready to commit)
-- Latest known-good commit: `a44b0a8` (`M3.7a: add transactional scene transforms`)
+- Mini-milestone: M3.7c - deterministic scene picking foundation (complete; ready to commit)
+- Latest known-good commit: `7485e9d` (`M3.7b: add transform gizmo math`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -105,10 +105,16 @@
 - Added translation, rotation-degree and scale-fraction snap settings with independent enablement and valid-step guards.
 - Added multi-selection application through the scene edit lifecycle and a nonzero scale floor to avoid singular transforms.
 - Kept gizmo drawing/picking unexposed until viewport hit proxies and mouse-to-world delta conversion are complete.
+- Added GUID-keyed scene pick proxies with validated world-space bounds and explicit visibility/selectability state.
+- Added normalized ray/AABB slab intersection with physical distance, maximum-range clipping and inside-volume handling.
+- Made exact hit ties deterministic by resolving priority first and stable GUID identity second.
+- Added eight-corner local-to-world bounds transformation for Euler rotation, non-uniform scale and negative scale.
+- Kept the first linear broad phase behind a replaceable picker API and bounded it with a 20,000-proxy gate.
+- Kept picking unexposed pending authoritative viewport unprojection and render-proxy synchronization.
 
 ## Next action
 
-Commit and push M3.7b, then implement viewport hit proxies/ray picking and screen-to-world gizmo deltas before exposing the visible Move/Rotate/Scale controls.
+Commit and push M3.7c, then implement viewport screen-ray construction, render-proxy synchronization and screen-to-world gizmo deltas before exposing visible Move/Rotate/Scale controls.
 
 ## Existing baseline findings
 
@@ -172,3 +178,5 @@ Commit and push M3.7b, then implement viewport hit proxies/ray picking and scree
 - M3.7a full scene regression and MSBuild Debug/Release plus CMake Debug: PASS.
 - `validate_ace_transform_gizmo.ps1`: PASS (22 axis, snapping, world/local, multi-target, commit/cancel and scale-safety checks, `/W4 /WX`).
 - M3.7b MSBuild Debug/Release plus CMake Debug: PASS.
+- `validate_ace_scene_picking.ps1`: PASS (16 bounds, ray, visibility, priority, deterministic-tie, transform and scale checks, `/W4 /WX`).
+- M3.7c MSBuild Debug/Release plus CMake Debug: PASS.
