@@ -12,6 +12,7 @@
 #include "ArhqenCognitionEngine/Ui/Core/AceUiStyleSet.h"
 #include "ArhqenCognitionEngine/AquariumRender/AceAquariumViewport.h"
 #include "ArhqenCognitionEngine/AquariumRender/AceAquariumEmbeddedDx12Viewport.h"
+#include "ArhqenCognitionEngine/Editor/Scene/AceAquariumScenePickAdapter.h"
 
 #include <Windowsx.h>
 #include <d2d1.h>
@@ -465,11 +466,16 @@ namespace am::ui
 
     void AceShellUi::setEditorScene(am::core::scene::SceneWorld* world,
                                     am::core::scene::SceneSelection* selection,
-                                    am::core::scene::SceneHierarchyModel* hierarchy) noexcept
+                                    am::core::scene::SceneHierarchyModel* hierarchy,
+                                    const am::core::Guid& previewGeometryId,
+                                    const am::core::Guid& referenceGridId) noexcept
     {
         editorScene_ = world;
         editorSceneSelection_ = selection;
         editorSceneHierarchy_ = hierarchy;
+        editorPreviewGeometryId_ = previewGeometryId;
+        editorReferenceGridId_ = referenceGridId;
+        editorScenePicker_.clear();
         if (editorScene_ && editorSceneSelection_ && editorSceneHierarchy_)
             editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
     }
@@ -6136,6 +6142,7 @@ namespace am::ui
             editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
             return true;
         }
+        if (aquariumEmbeddedViewportRect_.contains(x, y)) return selectEditorViewportAt(x, y);
         std::string error;
         if (engineWorkspaceController_.pointerDown(x, y, &error))
         {
@@ -6148,6 +6155,47 @@ namespace am::ui
             return true;
         }
         return false;
+    }
+
+    void AceShellUi::synchronizeEditorPickProxies(
+        const std::vector<ace::aquarium_render::AceAqRenderPrimitive>& primitives)
+    {
+        editorScenePicker_.clear();
+        if (!editorScene_ || !editorPreviewGeometryId_.isValid() || !editorReferenceGridId_.isValid()) return;
+        (void)am::editor::scene::AquariumScenePickAdapter::synchronize(primitives, *editorScene_,
+            editorPreviewGeometryId_, editorReferenceGridId_, editorScenePicker_);
+    }
+
+    bool AceShellUi::selectEditorViewportAt(float x, float y)
+    {
+        if (!editorScene_ || !editorSceneSelection_ || !editorSceneHierarchy_) return true;
+        const auto position = aquariumSingleHwndCamera_.Position();
+        const auto forward = aquariumSingleHwndCamera_.Forward();
+        const auto right = aquariumSingleHwndCamera_.Right();
+        const auto up = aquariumSingleHwndCamera_.Up();
+        am::editor::viewport::ViewportCamera camera;
+        camera.position = {position.x, position.y, position.z};
+        camera.forward = {forward.x, forward.y, forward.z};
+        camera.right = {right.x, right.y, right.z};
+        camera.up = {up.x, up.y, up.z};
+        camera.verticalFieldOfViewRadians = aquariumSingleHwndCamera_.VerticalFieldOfViewRadians();
+        camera.nearPlane = aquariumSingleHwndCamera_.NearPlane();
+        camera.farPlane = aquariumSingleHwndCamera_.FarPlane();
+        const am::editor::viewport::ViewportArea area{
+            aquariumEmbeddedViewportRect_.left, aquariumEmbeddedViewportRect_.top,
+            aquariumEmbeddedViewportRect_.width(), aquariumEmbeddedViewportRect_.height()};
+        const auto ray = am::editor::viewport::ViewportProjection::screenRay(camera, area, x, y);
+        const auto hit = ray ? editorScenePicker_.raycast(*ray, camera.farPlane) : std::nullopt;
+        const auto keyboard = D2DKeyboardState::current();
+        if (hit)
+            (void)editorSceneSelection_->select(*editorScene_, hit->entityId,
+                keyboard.ctrl ? am::core::scene::SceneSelectionMode::Toggle :
+                keyboard.shift ? am::core::scene::SceneSelectionMode::Add :
+                    am::core::scene::SceneSelectionMode::Replace);
+        else if (!keyboard.ctrl && !keyboard.shift)
+            editorSceneSelection_->clear();
+        editorSceneHierarchy_->rebuild(*editorScene_, *editorSceneSelection_);
+        return true;
     }
 
     void AceShellUi::renderEngineEditorMode(D2DRenderContext& ctx)
@@ -6217,6 +6265,7 @@ namespace am::ui
         }
 
         const auto primitives = aquariumSceneAdapter_.BuildPrimitives(aquariumController_, false);
+        synchronizeEditorPickProxies(primitives);
 
         auto renderRows = [&](const char* nodeId, const std::vector<std::wstring>& rows)
         {

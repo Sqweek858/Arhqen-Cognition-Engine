@@ -259,7 +259,8 @@ namespace am::core
         shellUi_.setLayoutProfilePath(layoutProfilePath);
         shellUi_.setVsyncEnabled(config_.getInt("ui.vsync", 0) != 0);
         shellUi_.setContentBrowserController(&contentBrowserController_);
-        shellUi_.setEditorScene(&editorScene_, &editorSceneSelection_, &editorSceneHierarchy_);
+        shellUi_.setEditorScene(&editorScene_, &editorSceneSelection_, &editorSceneHierarchy_,
+            *previewGeometry, *referenceGrid);
 
         if (!shellUi_.create(window_.hwnd(), window_.width(), window_.height(), &error))
         {

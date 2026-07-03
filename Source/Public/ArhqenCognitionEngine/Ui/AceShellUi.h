@@ -58,6 +58,8 @@
 #include "ArhqenCognitionEngine/Ui/Core/AcePanelResizePolicy.h"
 #include "ArhqenCognitionEngine/Editor/Workspace/AceEditorWorkspaceController.h"
 #include "ArhqenCognitionEngine/Editor/Viewport/AceCameraSpeedModel.h"
+#include "ArhqenCognitionEngine/Editor/Viewport/AceViewportProjection.h"
+#include "ArhqenCognitionEngine/Editor/Scene/AceScenePicking.h"
 #include "ArhqenCognitionEngine/Editor/Commands/AceCommandRegistry.h"
 #include "ArhqenCognitionEngine/Editor/ContentBrowser/AceContentBrowserController.h"
 #include "ArhqenCognitionEngine/Core/Scene/AceSceneWorld.h"
@@ -119,7 +121,9 @@ namespace am::ui
         void setContentBrowserController(am::editor::content_browser::ContentBrowserController* controller) noexcept;
         void setEditorScene(am::core::scene::SceneWorld* world,
                             am::core::scene::SceneSelection* selection,
-                            am::core::scene::SceneHierarchyModel* hierarchy) noexcept;
+                            am::core::scene::SceneHierarchyModel* hierarchy,
+                            const am::core::Guid& previewGeometryId,
+                            const am::core::Guid& referenceGridId) noexcept;
         void setRuntimeFrameDeltaSeconds(double deltaSeconds);
         void flushPendingPaint();
         bool create(HWND parent, int width, int height, std::string* error);
@@ -164,6 +168,8 @@ namespace am::ui
         void enterEngineEditorMode();
         void leaveEngineEditorMode();
         bool handleEngineEditorClick(float x, float y, unsigned clickCount = 1);
+        void synchronizeEditorPickProxies(const std::vector<ace::aquarium_render::AceAqRenderPrimitive>& primitives);
+        bool selectEditorViewportAt(float x, float y);
         void initializeEngineCommands();
         bool executeEngineCommand(std::string_view commandId);
         bool handleEngineCommandShortcut(WPARAM key, const D2DKeyboardState& keyboard, bool repeated);
@@ -410,6 +416,9 @@ namespace am::ui
         am::core::scene::SceneWorld* editorScene_ = nullptr;
         am::core::scene::SceneSelection* editorSceneSelection_ = nullptr;
         am::core::scene::SceneHierarchyModel* editorSceneHierarchy_ = nullptr;
+        am::editor::scene::ScenePicker editorScenePicker_{};
+        am::core::Guid editorPreviewGeometryId_{};
+        am::core::Guid editorReferenceGridId_{};
         struct EngineOutlinerHit
         {
             am::core::Guid id{};

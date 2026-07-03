@@ -58,6 +58,9 @@ namespace ace::aquarium_render
         float Pitch() const { return pitch_; }
         float MoveSpeed() const { return moveSpeed_; }
         float MouseSensitivity() const { return mouseSensitivity_; }
+        float VerticalFieldOfViewRadians() const { return fovYRadians_; }
+        float NearPlane() const { return nearPlane_; }
+        float FarPlane() const { return farPlane_; }
 
         void SetPosition(AceAqVec3 position);
         void SetYawPitch(float yawRadians, float pitchRadians);

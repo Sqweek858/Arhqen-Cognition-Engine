@@ -155,3 +155,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - UE viewport selection separates hit-proxy identity from widget paint and resolves selection only after the viewport has produced an authoritative hit result.
 - `Runtime/Engine/Public/HitProxies.h` defines stable hit-proxy identity and priority concepts; editor viewport clients consume the resolved hit instead of embedding scene mutation in rendering code.
 - ACE adaptation: `ScenePicker` owns GUID-keyed world bounds, normalized ray intersection and deterministic priority/identity tie-breaking independently of D2D paint. The initial broad phase is linear but hidden behind a replaceable API; screen unprojection, render-proxy synchronization and visible gizmo handles follow as separate integration slices.
+
+## M3.7d - viewport unprojection and rendered-scene selection
+
+- `Runtime/Engine/Private/SceneView.cpp` converts pixels inside the actual view rectangle to projection space, constructs a near-plane origin and transforms a normalized ray into world space.
+- `Editor/UnrealEd/Private/EditorViewportClient.cpp` resolves a hit at the click boundary and only then dispatches selection, keeping render identity separate from editor mutation.
+- ACE adaptation: `ViewportProjection` performs the equivalent perspective math directly from ACE's validated camera basis, while `AquariumScenePickAdapter` translates the exact submitted primitive stream into stable-GUID proxies. The shell consumes the resolved hit through the shared `SceneSelection`; it does not infer selection from D2D layout or labels.

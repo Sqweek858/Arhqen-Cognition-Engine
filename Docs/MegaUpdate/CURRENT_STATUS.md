@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.7c - deterministic scene picking foundation (complete; ready to commit)
-- Latest known-good commit: `7485e9d` (`M3.7b: add transform gizmo math`)
+- Mini-milestone: M3.7d - viewport unprojection and rendered-scene selection (complete; ready to commit)
+- Latest known-good commit: `99f2636` (`M3.7c: add scene picking foundation`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -111,10 +111,16 @@
 - Added eight-corner local-to-world bounds transformation for Euler rotation, non-uniform scale and negative scale.
 - Kept the first linear broad phase behind a replaceable picker API and bounded it with a 20,000-proxy gate.
 - Kept picking unexposed pending authoritative viewport unprojection and render-proxy synchronization.
+- Added a renderer-independent perspective viewport contract for validation, projection, near-plane screen-ray construction and depth-scaled gizmo sizing.
+- Matched the active camera's real position, basis, FOV and clip planes instead of duplicating camera constants in the editor.
+- Added a dedicated Aquarium render-to-pick adapter that rebuilds GUID proxies from the exact rendered primitive stream each frame.
+- Bound preview geometry and grid proxies through stable IDs supplied by application startup, never labels or painted row indices.
+- Enabled real viewport click selection with Replace, Shift-Add, Ctrl-Toggle and empty-space clear semantics.
+- Preserved visibility/lock behavior in the pick proxy and kept selection reflected through the shared Outliner/Details model.
 
 ## Next action
 
-Commit and push M3.7c, then implement viewport screen-ray construction, render-proxy synchronization and screen-to-world gizmo deltas before exposing visible Move/Rotate/Scale controls.
+Commit and push M3.7d, then add visible constant-screen-size gizmo handles, handle hit testing and screen-to-world drag deltas over the proven transaction lifecycle.
 
 ## Existing baseline findings
 
@@ -180,3 +186,7 @@ Commit and push M3.7c, then implement viewport screen-ray construction, render-p
 - M3.7b MSBuild Debug/Release plus CMake Debug: PASS.
 - `validate_ace_scene_picking.ps1`: PASS (16 bounds, ray, visibility, priority, deterministic-tie, transform and scale checks, `/W4 /WX`).
 - M3.7c MSBuild Debug/Release plus CMake Debug: PASS.
+- `validate_ace_viewport_projection.ps1`: PASS (21 viewport, camera, projection, ray, round-trip and scale checks, `/W4 /WX`).
+- `validate_ace_aquarium_scene_pick_adapter.ps1`: PASS (7 rendered-proxy, binding, visibility, lock and stale-clear checks, `/W4 /WX`).
+- Expanded Engine shell gate: PASS (36 checks including rendered proxy synchronization and viewport multi-selection routing).
+- M3.7d MSBuild Debug/Release, CMake Debug and hidden runtime startup/graceful `WM_CLOSE` shutdown: PASS; `Content/` remained empty.

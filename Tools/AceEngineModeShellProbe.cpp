@@ -132,6 +132,15 @@ int main()
     check(shell.find("engineOutlinerScroll_") != std::string::npos &&
         shell.find("editorSceneSelection_->select") != std::string::npos,
         "outliner_has_bounded_scroll_and_real_selection");
+    check(header.find("ScenePicker editorScenePicker_") != std::string::npos &&
+        shell.find("synchronizeEditorPickProxies(primitives)") != std::string::npos,
+        "viewport_pick_proxies_follow_rendered_scene_geometry");
+    check(shell.find("ViewportProjection::screenRay") != std::string::npos &&
+        shell.find("editorScenePicker_.raycast") != std::string::npos,
+        "viewport_click_uses_camera_unprojection_and_scene_raycast");
+    check(shell.find("keyboard.shift ? am::core::scene::SceneSelectionMode::Add") != std::string::npos &&
+        shell.find("keyboard.ctrl ? am::core::scene::SceneSelectionMode::Toggle") != std::string::npos,
+        "viewport_selection_supports_add_and_toggle_semantics");
 
     std::cout << (failures == 0 ? "PASS|" : "FAIL|") << "ace_engine_mode_shell_probe\n";
     return failures == 0 ? 0 : 1;

@@ -236,3 +236,13 @@
 - Kept the broad phase behind a compact replaceable API and verified 20,000 proxies remain bounded at the current editor scale.
 - Deliberately withheld viewport selection until screen-ray construction and render-proxy synchronization are authoritative.
 - Added 16 warning-as-error picking checks and passed all build configurations.
+
+## 2026-07-03 - M3.7d viewport unprojection and rendered-scene selection
+
+- Added a pure perspective viewport projection layer with camera/area validation, world projection, near-plane screen rays and world-units-per-pixel scaling.
+- Consumed the active renderer camera's position, orthonormal basis, field of view and clip planes through explicit read-only properties.
+- Added a dedicated adapter that rebuilds pick proxies from the same Aquarium primitive stream submitted to DX12.
+- Bound rendered geometry and reference-grid proxies to application-supplied stable scene GUIDs without label lookup.
+- Enabled real viewport click selection with replace, Shift-add, Ctrl-toggle and empty-space clear behavior.
+- Honored entity visibility and lock state and reflected viewport changes through the shared selection, Outliner and Details models.
+- Added 21 projection and 7 render-proxy warning-as-error checks and expanded the Engine shell gate to 36 checks.
