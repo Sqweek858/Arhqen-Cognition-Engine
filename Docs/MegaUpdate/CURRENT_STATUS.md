@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.3b - transactional filesystem asset operations (complete; ready to commit)
-- Latest known-good commit: `2988233` (`M3.3a: preserve asset identity and references`)
+- Mini-milestone: M3.4 - Content Browser model (complete; ready to commit)
+- Latest known-good commit: `1216dfc` (`M3.3b: add transactional asset operations`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -73,10 +73,17 @@
 - Delete refuses referenced assets before disk mutation, and undo restores file GUID plus outgoing reference edges.
 - Added strict display-name/collision/root/nonempty-folder checks and exact filesystem rollback when registry publication fails.
 - Kept Material creation unexposed until its real asset format/compiler/editor exist; no empty pseudo-material files are created.
+- Added an indexed Content Browser model over immutable Asset Registry generations with a canonical `/Game` current folder.
+- Added back/forward/up navigation, semantic breadcrumbs and a complete folder-tree projection without exposing filesystem paths.
+- Added direct-child tile/list data, deterministic folder-first sorting, text search and independent filters for every real asset type.
+- Added GUID-stable asset selection, folder-path selection, add/toggle/range semantics and one-item F2 rename state.
+- Registry generation changes now preserve moved asset selection by GUID and prune deleted selection/rename targets safely.
+- Removed current folders repair to the nearest surviving parent, while valid navigation history remains intact.
+- Integrated model synchronization into startup and every debounced watcher publication; the empty Content root remains valid.
 
 ## Next action
 
-Commit and push M3.3b, then build the Content Browser view/navigation/selection model over these real operations before exposing its D2D drawer.
+Commit and push M3.4, then bind the verified model and Asset Operation Service to the retained D2D Content Browser drawer with Ctrl+Space, keyboard navigation and inline rename.
 
 ## Existing baseline findings
 
@@ -128,3 +135,5 @@ Commit and push M3.3b, then build the Content Browser view/navigation/selection 
 - M3.3a MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_asset_operations.ps1`: PASS (35 filesystem, rollback, GUID, reference and Undo/Redo checks, `/W4 /WX`).
 - M3.3b registry/reference/transaction regressions, runtime external-undo/empty-Content smoke and all builds: PASS.
+- `validate_ace_content_browser_model.ps1`: PASS (43 navigation, history, filter, selection, rename, delta-repair and scale checks, `/W4 /WX`).
+- M3.4 Asset Registry regression, 100,000-item bounded sync, hidden empty-Content startup and MSBuild Debug/Release plus CMake Debug: PASS.

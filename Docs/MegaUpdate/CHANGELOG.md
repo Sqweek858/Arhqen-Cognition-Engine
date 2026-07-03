@@ -174,3 +174,13 @@
 - Fixed stable-ID archive spelling so case-folded `/game` keys serialize with the canonical `/Game` mount and survive restart.
 - Kept unimplemented Material creation out of both service and UI.
 - Added 35 warning-as-error operation checks plus full registry/transaction/build/runtime gates.
+
+## 2026-07-03 - M3.4 Content Browser model
+
+- Added a UI-independent, generation-synchronized Content Browser model over the real Asset Registry snapshot.
+- Added validated `/Game` navigation with back/forward/up history, breadcrumbs and a complete folder-tree projection.
+- Added direct-child tile/list items, folder-first deterministic sorting, case-insensitive search and real asset-type filtering.
+- Added stable selection by asset GUID, path-based folder selection, replace/add/toggle/range behavior and F2 rename lifecycle state.
+- Preserved selection when an asset moves, removed stale targets after deletion and repaired removed current folders to a surviving parent.
+- Wired startup and live watcher publications to the model while keeping the visual drawer hidden until its complete interaction layer is connected.
+- Added 43 warning-as-error checks including a bounded 100,000-asset synchronization gate, plus all builds and hidden startup.

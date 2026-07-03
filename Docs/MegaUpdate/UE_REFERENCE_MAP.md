@@ -118,3 +118,10 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - UE Asset Tools routes validated create/rename/duplicate operations through shared services rather than letting Content Browser widgets mutate files directly.
 - `Editor/UnrealEd/Public/AssetDeleteModel.h` separates reference discovery, user decision and actual deletion; unsafe deletion is not a raw filesystem action.
 - ACE adaptation: `AssetOperationService` is the only filesystem mutation boundary and records each completed action in `TransactionManager`. Duplicate/delete use exact external stashes, registry GUIDs survive undo/redo, and known reverse references block deletion before disk mutation. Material creation remains omitted until the real M6 format/compiler exists.
+
+## M3.4 - Content Browser view model
+
+- `Editor/ContentBrowserData/Public/ContentBrowserDataSubsystem.h` separates item enumeration, path conversion and queued item updates from Slate widgets.
+- `Editor/ContentBrowserData/Public/ContentBrowserItem.h` gives browser items stable identity independent of their current visual row or tile.
+- `Editor/ContentBrowser/Public/ContentBrowserDelegates.h` keeps selection, activation and rename as explicit interaction boundaries.
+- ACE adaptation: `ContentBrowserModel` consumes immutable registry generations and projects navigation, breadcrumbs, folders, filtered direct children and stable selection without D2D ownership. Assets use GUID identity across moves; folder/current-path state repairs conservatively after removal. The next slice can render and route input without duplicating asset logic inside paint code.

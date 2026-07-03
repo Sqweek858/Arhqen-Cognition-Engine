@@ -157,6 +157,9 @@ namespace am::core
             return false;
         }
         logger_.info("Asset Operation Service initialized with external undo storage.");
+        contentBrowserModel_.synchronize(assetRegistry_.snapshot());
+        logger_.info("Content Browser model synchronized at /Game generation=" +
+            std::to_string(contentBrowserModel_.synchronizedGeneration()));
         if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
         {
             logger_.error("Asset Directory Watcher initialization failed: " + assetRegistryError);
@@ -273,6 +276,7 @@ namespace am::core
                         " removed=" + std::to_string(deltaResult.removed.size()) +
                         " full=" + std::to_string(deltaResult.fullRescan ? 1 : 0));
                 }
+                contentBrowserModel_.synchronize(assetRegistry_.snapshot());
                 assetChangesPending_ = false;
                 assetFullRescanPending_ = false;
                 assetChangeQuietSeconds_ = 0.0;
