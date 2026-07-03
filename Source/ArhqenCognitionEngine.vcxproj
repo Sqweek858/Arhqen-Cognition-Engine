@@ -20,6 +20,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level4</WarningLevel><LanguageStandard>stdcpp20</LanguageStandard><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions><Optimization>MaxSpeed</Optimization><AdditionalIncludeDirectories>$(ProjectDir)Public;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>AM_RELEASE=1;WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;dcomp.lib;d2d1.lib;dwrite.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetRegistry.h" />
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetDirectoryWatcher.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Viewport\AceCameraSpeedModel.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Input\AceInputRouter.h" />
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Commands\AceCommandRegistry.h" />
@@ -225,6 +226,7 @@
     <ClCompile Include="Private\Core\AppConfig.cpp" />
     <ClCompile Include="Private\Core\Assets\AceAssetPath.cpp" />
     <ClCompile Include="Private\Core\Assets\AceAssetRegistry.cpp" />
+    <ClCompile Include="Private\Core\Assets\AceAssetDirectoryWatcher.cpp" />
     <ClCompile Include="Private\Core\Application.cpp" />
     <ClCompile Include="Private\Core\Logger.cpp" />
     <ClCompile Include="Private\Core\Identity\AceGuid.cpp" />

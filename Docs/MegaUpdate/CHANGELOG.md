@@ -144,3 +144,13 @@
 - Added versioned atomic registry identity persistence and recoverable rebuild after corrupt state.
 - Wired the registry into application initialization and verified a fresh runtime leaves `Content/` at exactly zero entries.
 - Added 24 warning-as-error tests plus GUID/path/archive regressions and all build configurations.
+
+## 2026-07-03 - M3.2 live Content watch and deltas
+
+- Added one coarse asynchronous Windows watch over the complete Content subtree, including folder events.
+- Added a bounded thread-safe event queue, repeated-modification coalescing and explicit `RescanRequired` recovery on overflow or malformed native data.
+- Preserved native old/new rename pairs and exposed watcher batch, queued, delivered, dropped and rescan counters.
+- Consumed filesystem events on the main runtime tick after a short quiet debounce with a hard maximum delay.
+- Added deterministic registry deltas containing stable GUID lists for added, modified and removed assets.
+- Made rescan publication transactional so duplicate identity/path failure cannot leave partially rebuilt lookup indexes.
+- Added a 34-check warning-as-error gate and an end-to-end application add/remove watch smoke with an empty final Content root.

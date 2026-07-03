@@ -20,6 +20,7 @@ Populate exact commands/results during M0. Every mini-milestone adds or updates 
 | Premium camera speed | 32 model/routing/popup/reachable-speed checks PASS | AI + Engine viewport control integrated | PASS | PASS | Hidden startup PASS; user feel test pending | Event-time momentum; no frame-rate dependency | M2.4 ready |
 | Editor command surface | 20 shell/menu/overlay + 18 registry checks PASS | Shared menu/toolbar/shortcut backend | PASS | PASS | Own-HWND startup capture PASS; editor visual pending | No inactive tools; retained popup overlay | M2.5 ready |
 | Content mount / Asset Registry | 24 registry + 60 path/archive checks PASS | Runtime startup mount integrated | PASS | PASS | Empty Content runtime smoke PASS | 250k/64 MiB bounds; indexed lookup | M3.1 ready |
+| Live Content watch / deltas | 34 expanded registry/watcher checks PASS | Main-tick debounce + runtime add/remove PASS | PASS | PASS | Content restored empty | 4096 queue; 0.5 s max debounce; overflow rescan | M3.2 ready |
 | Asset operations / scenes | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Materials/shaders | TBD | TBD | TBD | TBD | TBD | TBD | Not started |
 | Rendering/GI | TBD | TBD | TBD | TBD | TBD | TBD | Not started |

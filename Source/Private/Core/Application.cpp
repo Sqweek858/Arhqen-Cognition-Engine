@@ -150,6 +150,12 @@ namespace am::core
         logger_.info("Asset Registry mounted /Game at " + contentRoot.string() +
             " assets=" + std::to_string(assetRegistry_.snapshot().assets.size()) +
             " folders=" + std::to_string(assetRegistry_.snapshot().folders.size()));
+        if (!assetDirectoryWatcher_.start(contentRoot, &assetRegistryError))
+        {
+            logger_.error("Asset Directory Watcher initialization failed: " + assetRegistryError);
+            return false;
+        }
+        logger_.info("Asset Directory Watcher active on /Game subtree.");
 
         const auto windowTitle = config_.getString("window.title", "Arhqen Cognition Engine");
         const auto windowWidth = std::max(320, config_.getInt("window.width", 1280));
@@ -227,6 +233,46 @@ namespace am::core
     {
         shellUi_.setRuntimeFrameDeltaSeconds(timing.deltaSeconds);
 
+        const auto assetChanges = assetDirectoryWatcher_.drainChanges();
+        if (!assetChanges.empty())
+        {
+            assetChangesPending_ = true;
+            assetChangeQuietSeconds_ = 0.08;
+            for (const auto& change : assetChanges)
+            {
+                if (change.action == am::core::assets::AssetFileChangeAction::RescanRequired)
+                    assetFullRescanPending_ = true;
+            }
+        }
+        if (assetChangesPending_)
+        {
+            const double delta = std::clamp(timing.deltaSeconds, 0.0, 0.10);
+            assetChangeQuietSeconds_ -= delta;
+            assetChangePendingAgeSeconds_ += delta;
+            if (assetChangeQuietSeconds_ <= 0.0 || assetChangePendingAgeSeconds_ >= 0.50)
+            {
+                std::string registryError;
+                if (!assetRegistry_.rescan(&registryError, assetFullRescanPending_))
+                {
+                    logger_.error("Asset Registry live update failed: " + registryError);
+                    return false;
+                }
+                const auto& deltaResult = assetRegistry_.lastDelta();
+                if (!deltaResult.empty() || deltaResult.fullRescan)
+                {
+                    logger_.info("Asset Registry delta generation=" + std::to_string(deltaResult.generation) +
+                        " added=" + std::to_string(deltaResult.added.size()) +
+                        " modified=" + std::to_string(deltaResult.modified.size()) +
+                        " removed=" + std::to_string(deltaResult.removed.size()) +
+                        " full=" + std::to_string(deltaResult.fullRescan ? 1 : 0));
+                }
+                assetChangesPending_ = false;
+                assetFullRescanPending_ = false;
+                assetChangeQuietSeconds_ = 0.0;
+                assetChangePendingAgeSeconds_ = 0.0;
+            }
+        }
+
         if (timing.frameIndex < 3 || timing.frameIndex % 300 == 0)
         {
             logger_.info(
@@ -291,6 +337,13 @@ namespace am::core
     void Application::shutdownRuntime()
     {
         logger_.info("Runtime shutdown begin.");
+        assetDirectoryWatcher_.stop();
+        const auto watcherStats = assetDirectoryWatcher_.stats();
+        logger_.info("Asset Directory Watcher stopped. batches=" + std::to_string(watcherStats.nativeBatches) +
+            " queued=" + std::to_string(watcherStats.queuedEvents) +
+            " delivered=" + std::to_string(watcherStats.deliveredEvents) +
+            " dropped=" + std::to_string(watcherStats.droppedEvents) +
+            " rescans=" + std::to_string(watcherStats.rescanSignals));
         if (rendererEnabled_)
         {
             renderer_.shutdown();

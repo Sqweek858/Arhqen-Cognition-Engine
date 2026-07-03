@@ -47,6 +47,7 @@ add_executable(ArhqenCognitionEngine
     Source/Private/Core/Application.cpp
     Source/Private/Core/Assets/AceAssetPath.cpp
     Source/Private/Core/Assets/AceAssetRegistry.cpp
+    Source/Private/Core/Assets/AceAssetDirectoryWatcher.cpp
     Source/Private/Core/Identity/AceGuid.cpp
     Source/Private/Core/Logger.cpp
     Source/Private/Core/PathUtils.cpp

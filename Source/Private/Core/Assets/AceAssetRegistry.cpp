@@ -151,6 +151,7 @@ namespace am::core::assets
         if (error) error->clear();
         initialized_ = false;
         snapshot_ = {};
+        lastDelta_ = {};
         stableIdsByPathKey_.clear();
         assetIndexByPathKey_.clear();
         assetIndexById_.clear();
@@ -168,7 +169,7 @@ namespace am::core::assets
             lastWarning_ = std::move(loadError);
         }
         initialized_ = true;
-        return rescan(error);
+        return rescan(error, true);
     }
 
     bool AssetRegistry::loadStableIds(std::string* error)
@@ -243,7 +244,7 @@ namespace am::core::assets
         return AtomicFile::write(stateFile_, writer.finish(), error);
     }
 
-    bool AssetRegistry::rescan(std::string* error)
+    bool AssetRegistry::rescan(std::string* error, bool fullRescan)
     {
         if (error) error->clear();
         if (!initialized_)
@@ -368,22 +369,61 @@ namespace am::core::assets
             }
         }
 
-        snapshot_ = std::move(next);
-        stableIdsByPathKey_.clear();
-        assetIndexByPathKey_.clear();
-        assetIndexById_.clear();
-        for (std::size_t index = 0; index < snapshot_.assets.size(); ++index)
+        AssetRegistryDelta delta;
+        delta.generation = next.generation;
+        delta.fullRescan = fullRescan;
+        std::unordered_map<std::string, const AssetRecord*> previousByPath;
+        previousByPath.reserve(snapshot_.assets.size());
+        for (const auto& asset : snapshot_.assets)
+            previousByPath.emplace(asset.path.comparisonKey(), &asset);
+        for (const auto& asset : next.assets)
         {
-            const auto& asset = snapshot_.assets[index];
+            const auto previous = previousByPath.find(asset.path.comparisonKey());
+            if (previous == previousByPath.end())
+            {
+                delta.added.push_back(asset.id);
+                continue;
+            }
+            const AssetRecord& old = *previous->second;
+            if (old.type != asset.type || old.fileSize != asset.fileSize ||
+                old.lastWriteStamp != asset.lastWriteStamp || old.extension != asset.extension)
+                delta.modified.push_back(asset.id);
+            previousByPath.erase(previous);
+        }
+        for (const auto& [key, asset] : previousByPath)
+        {
+            (void)key;
+            delta.removed.push_back(asset->id);
+        }
+        auto sortGuids = [](std::vector<Guid>& values) { std::sort(values.begin(), values.end()); };
+        sortGuids(delta.added);
+        sortGuids(delta.modified);
+        sortGuids(delta.removed);
+
+        std::unordered_map<std::string, Guid> nextStableIds;
+        std::unordered_map<std::string, std::size_t> nextPathIndexes;
+        std::unordered_map<Guid, std::size_t, GuidHash> nextIdIndexes;
+        nextStableIds.reserve(next.assets.size());
+        nextPathIndexes.reserve(next.assets.size());
+        nextIdIndexes.reserve(next.assets.size());
+        for (std::size_t index = 0; index < next.assets.size(); ++index)
+        {
+            const auto& asset = next.assets[index];
             const std::string key = asset.path.comparisonKey();
-            if (!stableIdsByPathKey_.emplace(key, asset.id).second ||
-                !assetIndexByPathKey_.emplace(key, index).second ||
-                !assetIndexById_.emplace(asset.id, index).second)
+            if (!nextStableIds.emplace(key, asset.id).second ||
+                !nextPathIndexes.emplace(key, index).second ||
+                !nextIdIndexes.emplace(asset.id, index).second)
             {
                 fail(error, "Content root contains duplicate asset identity or path");
                 return false;
             }
         }
+
+        snapshot_ = std::move(next);
+        lastDelta_ = std::move(delta);
+        stableIdsByPathKey_ = std::move(nextStableIds);
+        assetIndexByPathKey_ = std::move(nextPathIndexes);
+        assetIndexById_ = std::move(nextIdIndexes);
         return saveStableIds(error);
     }
 

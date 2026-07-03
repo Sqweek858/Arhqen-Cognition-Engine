@@ -9,6 +9,7 @@
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Workspace\AceEditorWorkspaceController.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Editor\Viewport\AceCameraSpeedModel.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetRegistry.h"><Filter></Filter></ClInclude>
+    <ClInclude Include="Public\ArhqenCognitionEngine\Core\Assets\AceAssetDirectoryWatcher.h"><Filter></Filter></ClInclude>
     <Filter Include="" />
   </ItemGroup>
   <ItemGroup>
@@ -20,6 +21,7 @@
     <ClCompile Include="Private\Editor\Workspace\AceEditorWorkspaceController.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Editor\Viewport\AceCameraSpeedModel.cpp"><Filter></Filter></ClCompile>
     <ClCompile Include="Private\Core\Assets\AceAssetRegistry.cpp"><Filter></Filter></ClCompile>
+    <ClCompile Include="Private\Core\Assets\AceAssetDirectoryWatcher.cpp"><Filter></Filter></ClCompile>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Core\AceRenderer.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceRenderScene.h"><Filter></Filter></ClInclude>
     <ClInclude Include="Public\ArhqenCognitionEngine\Renderer\Scene\AceAquariumGpuViewportRenderer.h"><Filter></Filter></ClInclude>

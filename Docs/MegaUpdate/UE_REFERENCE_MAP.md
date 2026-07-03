@@ -99,3 +99,9 @@ ACE adaptation: `CommandRegistry` owns stable dotted IDs, localized-ready labels
 - `Runtime/AssetRegistry/Private/AssetRegistry.cpp`: missing mounted content directories are created before installing directory watches; directory changes include folder events.
 - `Developer/DirectoryWatcher/Public/IDirectoryWatcher.h`: watcher output distinguishes add/modify/remove/rescan-required and is consumed through a tick boundary.
 - ACE adaptation: the initial registry is intentionally smaller and filesystem-oriented, but keeps mounted virtual identity, transient indexed records, a versioned external cache and safe full-rescan recovery. M3.2 will add one coarse `Content/` watch with a bounded change queue and rescan-required fallback, matching UE's warning against excessive granular watchers.
+
+## M3.2 - live Content watch and registry deltas
+
+- `Developer/DirectoryWatcher/Private/Windows/DirectoryWatchRequestWindows.cpp`: Windows subtree watches are represented by a native request and translate platform notifications before consumer delivery.
+- `Runtime/AssetRegistry/Private/AssetRegistry.cpp` registers coarse content roots with `IncludeDirectoryChanges`, and treats watcher overflow as an explicit rescan condition rather than trusting an incomplete event list.
+- ACE adaptation: `AssetDirectoryWatcher` owns one overlapped `ReadDirectoryChangesW` request and a bounded cross-thread queue. Application tick owns debounce and registry mutation; consumers receive stable GUID deltas. ACE currently rebuilds the compact snapshot per debounced batch, which is safer and fast for the present empty/small Content root; the public delta contract permits a future path-local scanner without UI changes.

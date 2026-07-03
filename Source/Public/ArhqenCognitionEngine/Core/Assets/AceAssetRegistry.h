@@ -51,18 +51,33 @@ namespace am::core::assets
         std::uint64_t skippedUnsafeEntries = 0;
     };
 
+    struct AssetRegistryDelta
+    {
+        std::uint64_t generation = 0;
+        bool fullRescan = false;
+        std::vector<Guid> added;
+        std::vector<Guid> modified;
+        std::vector<Guid> removed;
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return added.empty() && modified.empty() && removed.empty();
+        }
+    };
+
     class AssetRegistry final
     {
     public:
         bool initialize(std::filesystem::path contentRoot,
                         std::filesystem::path stateFile,
                         std::string* error = nullptr);
-        bool rescan(std::string* error = nullptr);
+        bool rescan(std::string* error = nullptr, bool fullRescan = false);
 
         [[nodiscard]] bool initialized() const noexcept { return initialized_; }
         [[nodiscard]] const std::filesystem::path& contentRoot() const noexcept { return contentRoot_; }
         [[nodiscard]] const std::filesystem::path& stateFile() const noexcept { return stateFile_; }
         [[nodiscard]] const AssetRegistrySnapshot& snapshot() const noexcept { return snapshot_; }
+        [[nodiscard]] const AssetRegistryDelta& lastDelta() const noexcept { return lastDelta_; }
         [[nodiscard]] const std::string& lastWarning() const noexcept { return lastWarning_; }
         [[nodiscard]] const AssetRecord* findByPath(std::string_view virtualPath) const;
         [[nodiscard]] const AssetRecord* findById(const Guid& id) const;
@@ -78,6 +93,7 @@ namespace am::core::assets
         std::filesystem::path contentRoot_;
         std::filesystem::path stateFile_;
         AssetRegistrySnapshot snapshot_{};
+        AssetRegistryDelta lastDelta_{};
         std::unordered_map<std::string, Guid> stableIdsByPathKey_;
         std::unordered_map<std::string, std::size_t> assetIndexByPathKey_;
         std::unordered_map<Guid, std::size_t, GuidHash> assetIndexById_;

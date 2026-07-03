@@ -5,8 +5,8 @@
 - Activation: STARTED on 2026-07-02
 - Branch: `feature/ace-editor-mega-update`
 - Macro milestone: M3 - content and asset foundation
-- Mini-milestone: M3.1 - sandboxed Content mount and Asset Registry (complete; ready to commit)
-- Latest known-good commit: `5886ef1` (`M2.5: add functional editor command surface`)
+- Mini-milestone: M3.2 - live directory watch and registry deltas (complete; ready to commit)
+- Latest known-good commit: `3a1a2eb` (`M3.1: add sandboxed asset registry`)
 - UE source: `C:\Users\Sqweek\Documents\UE_5.7\Engine\Source`
 
 ## Completed
@@ -58,10 +58,15 @@
 - Added strict supported-extension classification and exclusion for unsupported, hidden, system, internal and symlink entries.
 - Added deterministic sorting, generation counters, rescans and safe recovery from corrupt registry state with an explicit warning.
 - Wired Asset Registry initialization into runtime startup before the window/editor is exposed.
+- Added one asynchronous Windows directory watch for the entire Content subtree, including directory changes.
+- Added a bounded 4096-event queue with duplicate-modify coalescing and explicit full-rescan fallback on overflow/native ambiguity.
+- Moved all registry mutation to the main runtime tick behind a quiet-period debounce and maximum-latency bound.
+- Added deterministic per-generation added/modified/removed GUID deltas for future Content Browser consumers.
+- Added clean cancellation/join/handle teardown and observable watcher batch/queue/drop/rescan counters.
 
 ## Next action
 
-Commit and push M3.1, then add the UE-inspired directory watcher/change queue and incremental registry deltas before exposing Content Browser.
+Commit and push M3.2, then implement transactional asset/folder create, rename, duplicate, move and delete operations before exposing Content Browser.
 
 ## Existing baseline findings
 
@@ -107,3 +112,5 @@ Commit and push M3.1, then add the UE-inspired directory watcher/change queue an
 - M2.5 hidden startup, MSBuild Debug/Release and CMake Debug: PASS.
 - `validate_ace_asset_registry.ps1`: PASS (24 mount, filtering, identity, restart, rescan and corruption checks, `/W4 /WX`).
 - M3.1 identity/path and archive regressions, runtime-empty-Content smoke, MSBuild Debug/Release and CMake Debug: PASS.
+- Expanded Asset Registry gate: PASS (34 checks including live native watch, rename pairs and added/modified/removed deltas).
+- M3.2 end-to-end application watch smoke logged both add/remove generations and restored Content to zero entries; all builds PASS.
